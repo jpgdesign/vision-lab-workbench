@@ -1,0 +1,11 @@
+# API, media inspection and dataset validation; no model runtimes or weights.
+fastapi==0.115.12
+uvicorn==0.34.3
+python-multipart==0.0.22
+pydantic>=2.10,<3
+numpy==2.2.6
+Pillow==11.3.0
+PyYAML==6.0.3
+requests==2.32.5
+opencv-python==4.12.0.88
+imageio-ffmpeg==0.6.0

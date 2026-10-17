@@ -1,0 +1,17 @@
+Class-name assets (verified 2026-10-18)
+
+kinetics400.json: name -> class index, official PySlowFast mapping.
+https://dl.fbaipublicfiles.com/pyslowfast/dataset/class_names/kinetics_classnames.json
+Quotes around some names are removed when displayed; indices are preserved.
+The reversed mapping exactly matches all 400 entries in:
+https://huggingface.co/datasets/huggingface/label-files/blob/main/kinetics400-id2label.json
+
+ViViT original conversion uses that same Hugging Face mapping, without reordering
+the classifier. Generic LABEL_i metadata in the original pretrained checkpoint
+is replaced only for display. Custom fine-tuning class names remain untouched.
+https://github.com/huggingface/transformers/blob/b0fa0701d2d7d0b9c0cdf74636a7a8bd1a1ed43b/src/transformers/models/vivit/convert_vivit_flax_to_pytorch.py
+
+kinetics710.txt: official VideoMAEv2 class-index order; DO NOT sort it.
+https://github.com/OpenGVLab/VideoMAEv2/blob/29eab1e8a588d1b3ec0cdec7b03a86cca491b74b/misc/label_map_k710.txt
+SHA256: 21252255bdf4e69af20eecf81fc4a8fd7feb34e0388b0edcc0fbe8d5d333af1f
+Documentation: https://github.com/OpenGVLab/VideoMAEv2/blob/master/docs/DATASET.md

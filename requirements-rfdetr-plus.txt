@@ -1,0 +1,3 @@
+# Optional separate runtime under Roboflow's PML terms.
+# Installation does not grant rights or count as license acceptance.
+rfdetr-plus==1.0.0

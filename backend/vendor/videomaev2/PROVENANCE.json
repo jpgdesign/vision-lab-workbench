@@ -1,0 +1,13 @@
+{
+  "revision": "29eab1e8a588d1b3ec0cdec7b03a86cca491b74b",
+  "files": {
+    "modeling_finetune.py": {
+      "source": "https://raw.githubusercontent.com/OpenGVLab/VideoMAEv2/29eab1e8a588d1b3ec0cdec7b03a86cca491b74b/models/modeling_finetune.py",
+      "sha256": "d132c97369f25207e380e78c59294fd00b93d2f6aa0fb5c4ded19eff26a5a3cb"
+    },
+    "LICENSE.txt": {
+      "source": "https://raw.githubusercontent.com/OpenGVLab/VideoMAEv2/29eab1e8a588d1b3ec0cdec7b03a86cca491b74b/LICENSE",
+      "sha256": "8f03d25fbcffafa2254d4d1414bf2a38423a966006b4a6964ee21f728d610bff"
+    }
+  }
+}
