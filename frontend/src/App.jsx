@@ -6,12 +6,14 @@ import Training from './Training';
 import ModelLibrary from './ModelLibrary';
 import LiveCamera from './LiveCamera';
 import { applySystemDevices } from './systemDevices';
+import { JobPoller, mergeJobSnapshot, mergeJobUpdate } from './jobPolling';
 
 export default function App() {
   const [page, setPage] = useState('inference');
   const [models, setModels] = useState([]);
   const [media, setMedia] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const jobsRef = useRef([]), jobPoller = useRef(null);
   const [datasets, setDatasets] = useState([]);
   const [health, setHealth] = useState(null);
   const [system, setSystem] = useState(null), [checkpoints, setCheckpoints] = useState([]);
@@ -26,19 +28,32 @@ export default function App() {
   }, []);
   const refresh = useCallback(async () => {
     setLoading(true);
+    jobPoller.current?.wake();
     try {
-      const values = await Promise.all([api('/health'), api('/models'), api('/media'), api('/jobs'), api('/datasets'), api('/system'), api('/checkpoints')]);
-      setHealth(values[0]); setModels(applySystemDevices(values[1].models || [], values[5])); setMedia(values[2].media || []); setJobs(values[3].jobs || []); setDatasets(values[4].datasets || []); setSystem(values[5]); setCheckpoints(values[6].checkpoints || []); setConnectionError('');
+      const values = await Promise.all([api('/health'), api('/models'), api('/media'), api('/datasets'), api('/system'), api('/checkpoints')]);
+      setHealth(values[0]); setModels(applySystemDevices(values[1].models || [], values[4])); setMedia(values[2].media || []); setDatasets(values[3].datasets || []); setSystem(values[4]); setCheckpoints(values[5].checkpoints || []); setConnectionError('');
     } catch (error) { setConnectionError(error.message); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { refresh(); return () => clearTimeout(toastTimer.current); }, [refresh]);
   useEffect(() => {
+    const poller = new JobPoller({
+      fetchJobs: async signal => (await api('/jobs', { signal })).jobs || [],
+      getJobs: () => jobsRef.current,
+      onJobs: incoming => { jobsRef.current = mergeJobSnapshot(jobsRef.current, incoming); setJobs(jobsRef.current); },
+      onSuccess: () => setConnectionError(''),
+      onError: error => setConnectionError(error.message),
+    });
+    jobPoller.current = poller;
+    poller.start();
+    return () => { poller.stop(); if (jobPoller.current === poller) jobPoller.current = null; };
+  }, []);
+  useEffect(() => {
     let alive = true, timer;
     async function poll() {
       try {
-        const [jobData, healthData, checkpointData] = await Promise.all([api('/jobs'), api('/health'), api('/checkpoints')]);
-        if (alive) { setJobs(jobData.jobs || []); setHealth(healthData); setCheckpoints(checkpointData.checkpoints || []); setConnectionError(''); }
+        const [healthData, checkpointData] = await Promise.all([api('/health'), api('/checkpoints')]);
+        if (alive) { setHealth(healthData); setCheckpoints(checkpointData.checkpoints || []); setConnectionError(''); }
       } catch (error) { if (alive) setConnectionError(error.message); }
       if (alive) timer = setTimeout(poll, 2200);
     }
@@ -48,12 +63,13 @@ export default function App() {
   async function submitJob(payload) {
     const job = await api('/jobs', { method: 'POST', body: payload });
     const value = job.job || job;
-    setJobs(prev => [value, ...prev.filter(item => item.id !== value.id)]);
+    jobsRef.current = mergeJobUpdate(jobsRef.current, value); setJobs(jobsRef.current);
+    jobPoller.current?.wake();
     notify('任務已加入佇列，會依序使用本機運算資源。');
     return value;
   }
   async function cancelJob(id) {
-    try { const data = await api(`/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); const job = data.job || data; setJobs(prev => prev.map(item => item.id === id ? job : item)); notify('已送出取消要求。'); }
+    try { const data = await api(`/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); const job = data.job || data; jobsRef.current = mergeJobUpdate(jobsRef.current, job); setJobs(jobsRef.current); jobPoller.current?.wake(); notify('已送出取消要求。'); }
     catch (error) { notify(error.message, true); }
   }
   async function uploadMedia(file) {

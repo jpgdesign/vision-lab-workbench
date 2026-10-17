@@ -51,6 +51,27 @@ def upload_image(client):
     return result.json()
 
 
+def test_inference_cache_clear_is_idle_only_and_keeps_jobs_and_media(api):
+    client, app = api
+    item = upload_image(client)
+    idle = client.post("/api/inference-cache/clear")
+    assert idle.status_code == 200 and idle.json()["released"] is False
+    queued = app.state.jobs.submit({"kind": "inference", "model_id": "detector", "params": {}})
+    rejected = client.post("/api/inference-cache/clear")
+    assert rejected.status_code == 409
+    assert app.state.jobs.get(queued["id"])["status"] == "queued"
+    app.state.jobs.cancel(queued["id"])
+    assert client.post("/api/inference-cache/clear").status_code == 200
+    assert len(client.get("/api/jobs").json()["jobs"]) == 1
+    assert client.get(item["url"]).content == png()
+
+
+def test_external_page_cannot_release_cached_models(api):
+    client, _ = api
+    response = client.post("/api/inference-cache/clear", headers={"origin": "https://outside.example"})
+    assert response.status_code == 403
+
+
 def test_default_samples_prefer_bundled_media_and_show_ten_images_one_video(tmp_path, monkeypatch):
     monkeypatch.setenv("VISION_WORKBENCH_RUNTIME", str(tmp_path / "module-runtime"))
     module = importlib.import_module("backend.app")

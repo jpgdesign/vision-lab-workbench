@@ -1,9 +1,12 @@
 """Local adapters for image detection and temporal video classification."""
 from contextlib import nullcontext
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import time
+import traceback
 
 from .catalog import WEIGHTS
 
@@ -234,8 +237,9 @@ def create_detector(model_id, params, device, checkpoint_path=None, model_weight
         from ultralytics import YOLO
         model = YOLO(str(path))
         validate_yolo_architecture(model, model_id)
-        def predict(image):
-            kwargs = {key: params[key] for key in ("conf", "imgsz", "max_det", "iou") if key in params}
+        def predict(image, inference_params=None):
+            current = params if inference_params is None else inference_params
+            kwargs = {key: current[key] for key in ("conf", "imgsz", "max_det", "iou") if key in current}
             result = model.predict(image, device=device, verbose=False, **kwargs)[0]
             return [{"label": result.names[int(cls)], "score": float(score), "box": box.tolist()}
                     for box, score, cls in zip(result.boxes.xyxy.cpu(), result.boxes.conf.cpu(), result.boxes.cls.cpu())]
@@ -245,15 +249,16 @@ def create_detector(model_id, params, device, checkpoint_path=None, model_weight
         source_dir = path if checkpoint_path else path.parent
         processor = AutoProcessor.from_pretrained(str(source_dir), local_files_only=True)
         model = AutoModelForZeroShotObjectDetection.from_pretrained(str(source_dir), local_files_only=True).to(device).eval()
-        prompt = params["prompt"].strip().lower()
-        if not prompt.endswith("."):
-            prompt += " ."
-        def predict(image):
+        def predict(image, inference_params=None):
+            current = params if inference_params is None else inference_params
+            prompt = current["prompt"].strip().lower()
+            if not prompt.endswith("."):
+                prompt += " ."
             inputs = processor(images=image, text=prompt, return_tensors="pt").to(device)
             with torch.inference_mode():
                 outputs = model(**inputs)
             results = processor.post_process_grounded_object_detection(outputs, inputs.input_ids,
-                threshold=params["conf"], text_threshold=params["text_threshold"], target_sizes=[(image.height, image.width)])[0]
+                threshold=current["conf"], text_threshold=current["text_threshold"], target_sizes=[(image.height, image.width)])[0]
             labels = results.get("text_labels", results.get("labels", []))
             return [{"label": str(label), "score": float(score), "box": box.cpu().tolist()}
                     for label, score, box in zip(labels, results["scores"], results["boxes"])]
@@ -283,8 +288,11 @@ def create_detector(model_id, params, device, checkpoint_path=None, model_weight
             model = LocalRFDETR2XLarge(pretrain_weights=str(path), device=rf_device,
                                      accept_platform_model_license=True, **model_options)
         classes = model.class_names
-        def predict(image):
-            detections = model.predict(image, threshold=params["conf"])
+        def predict(image, inference_params=None):
+            current = params if inference_params is None else inference_params
+            if not current.get("accept_platform_license"):
+                raise ValueError("尚未確認 RF-DETR 2XL 所需的 PML 授權")
+            detections = model.predict(image, threshold=current["conf"])
             return [{"label": classes.get(int(cls), str(cls)) if isinstance(classes, dict) else classes[int(cls)],
                      "score": float(score), "box": box.tolist()}
                     for box, score, cls in zip(detections.xyxy, detections.confidence, detections.class_id)
@@ -293,20 +301,21 @@ def create_detector(model_id, params, device, checkpoint_path=None, model_weight
     raise ValueError("模型沒有偵測接頭")
 
 
-def run_detection(request, output, emit, device):
+def run_detection(request, output, emit, device, *, predict=None):
     import cv2
     import numpy as np
     from PIL import Image
     source = Path(request["media_path"])
     params = request["params"]
-    predict = create_detector(request["model_id"], params, device, request.get("checkpoint_path"), request.get("model_weight_path"))
+    if predict is None:
+        predict = create_detector(request["model_id"], params, device, request.get("checkpoint_path"), request.get("model_weight_path"))
     emit({"event": "progress", "progress": 0.15, "message": "模型已載入，開始辨識"})
     is_video = source.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
     if not is_video:
         image = Image.open(source).convert("RGB")
         synchronize(device)
         start = time.perf_counter()
-        predictions = predict(image)
+        predictions = predict(image, params)
         synchronize(device)
         elapsed = (time.perf_counter() - start) * 1000
         result_path = output / "result.png"
@@ -339,7 +348,7 @@ def run_detection(request, output, emit, device):
                 image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 synchronize(device)
                 start = time.perf_counter()
-                predictions = predict(image)
+                predictions = predict(image, params)
                 synchronize(device)
                 times.append((time.perf_counter() - start) * 1000)
                 annotated = draw_predictions(np.asarray(image), predictions)
@@ -373,13 +382,14 @@ def run_detection(request, output, emit, device):
             writer.release()
 
 
-def run_action(request, output, emit, device):
+def run_action(request, output, emit, device, *, loaded_model=None):
     import cv2
     import numpy as np
     import torch
     source = Path(request["media_path"])
     params = request["params"]
-    model, metadata = create_action_model(request["model_id"], device, request.get("checkpoint_path"), request.get("model_weight_path"))
+    model, metadata = loaded_model if loaded_model is not None else create_action_model(
+        request["model_id"], device, request.get("checkpoint_path"), request.get("model_weight_path"))
     emit({"event": "progress", "progress": 0.2, "message": "行為模型已載入，讀取影片片段"})
     first_frames, duration = read_clip(source, metadata["num_frames"], params["start_seconds"], params["clip_seconds"])
     if params["start_seconds"] >= duration:
@@ -426,10 +436,104 @@ def run_action(request, output, emit, device):
             "artifacts": {"predictions": str(output / "predictions.json"), "preview": str(output / "preview.jpg")}}
 
 
-def run_inference(request, output_dir, emit):
+DETECTOR_IDS = {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"}
+
+
+def inference_model_key(request, device):
+    from .inference_cache import model_cache_key
+    from .model_registry import validate_checkpoint, validate_weight
+    model_id = request["model_id"]
+    # These checks must run on hits too: cache ownership does not grant a
+    # license, and a missing/rebound/replaced weight must not reuse old tensors.
+    if model_id == "rf_detr_2xl" and not request["params"].get("accept_platform_license"):
+        raise ValueError("尚未確認 RF-DETR 2XL 所需的 PML 授權")
+    checkpoint = request.get("checkpoint_path")
+    source = validate_checkpoint(model_id, checkpoint) if checkpoint else validate_weight(
+        model_id, request.get("model_weight_path") or WEIGHTS[model_id])
+    extras = []
+    if model_id in {"vivit_base_k400", "x3d_l", "slowfast_r101_8x8"}:
+        extras.append(ASSETS / "kinetics400.json")
+    elif model_id == "videomaev2_giant_k710":
+        extras.append(ASSETS / "kinetics710.txt")
+    return model_cache_key(model_id, device, source, checkpoint=bool(checkpoint),
+                           folder_model=model_id in {"grounding_dino_base", "vivit_base_k400"},
+                           extra_metadata=extras)
+
+
+def _is_out_of_memory(error):
+    # PyTorch OutOfMemoryError derives from RuntimeError. Include CPU allocator
+    # failures too, since evicting other models can free RAM for the retry.
+    torch = sys.modules.get("torch")
+    oom_type = getattr(torch, "OutOfMemoryError", ())
+    return isinstance(error, MemoryError) or isinstance(error, oom_type) or (isinstance(error, RuntimeError) and
+        any(text in str(error).lower() for text in ("out of memory", "can't allocate memory", "cannot allocate memory", "cudnn_status_alloc_failed")))
+
+
+def _clear_exception_tensors(error, *, detach=False):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if error.__traceback__ is not None:
+            traceback.clear_frames(error.__traceback__)
+            if detach:
+                error.__traceback__ = None
+        error = error.__cause__ or error.__context__
+
+
+def run_inference(request, output_dir, emit, *, model_cache=None):
+    """Run one job, optionally borrowing models from a serial worker's cache."""
+    from .inference_cache import InferenceModelCache, release_unused_memory
+    started = time.perf_counter()
     output = Path(output_dir)
     device = resolve_device(request["params"].get("device", "auto"))
+    key = inference_model_key(request, device)
+    cache = model_cache if model_cache is not None else InferenceModelCache(max_entries=1)
+    detection = request["model_id"] in DETECTOR_IDS
+    load_seconds = 0.0
+    resource = None
+    first_oom = None
+
+    def load():
+        nonlocal load_seconds
+        before = time.perf_counter()
+        try:
+            if detection:
+                return create_detector(request["model_id"], request["params"], device,
+                                       request.get("checkpoint_path"), request.get("model_weight_path"))
+            return create_action_model(request["model_id"], device,
+                                       request.get("checkpoint_path"), request.get("model_weight_path"))
+        finally:
+            load_seconds += time.perf_counter() - before
+
     emit({"event": "log", "message": f"運算裝置：{device}；使用本機權重，不自動下載模型"})
-    if request["model_id"] in ("yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"):
-        return run_detection(request, output, emit, device)
-    return run_action(request, output, emit, device)
+    try:
+        for attempt in range(2):
+            try:
+                resource, hit = cache.acquire(key, load)
+                emit({"event": "log", "message": "重用已載入模型" if hit else "已載入本次使用的模型"})
+                result = (run_detection(request, output, emit, device, predict=resource) if detection else
+                          run_action(request, output, emit, device, loaded_model=resource))
+                result["runtime"] = {"model_cache_hit": bool(hit and not attempt),
+                    "model_load_seconds": round(load_seconds, 6),
+                    "total_seconds": round(time.perf_counter() - started, 6),
+                    "oom_retry": bool(attempt), "worker_pid": os.getpid()}
+                return result
+            except Exception as error:
+                resource = None
+                cache.discard(key, release=False)
+                retry = attempt == 0 and _is_out_of_memory(error)
+                _clear_exception_tensors(error, detach=retry)
+                if not retry:
+                    release_unused_memory()
+                    if first_oom is not None:
+                        raise error from first_oom
+                    raise
+                # No traceback frames/tensors survive into the next attempt.
+                first_oom = error
+                cache.clear(release=False)
+            release_unused_memory()
+            emit({"event": "log", "message": "記憶體不足，已釋放模型快取；重新載入並重試一次"})
+    finally:
+        resource = None
+        if model_cache is None:
+            cache.close()

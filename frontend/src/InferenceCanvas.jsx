@@ -1,9 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Background, ReactFlow, ReactFlowProvider, NodeResizer, useNodesState, useReactFlow } from '@xyflow/react';
 import { ArrowDownToLine, ArrowUpFromLine, ChevronDown, Clapperboard, Copy, Expand, Film, Image, Layers2, LoaderCircle, Maximize, Play, Plus, ScanLine, Search, SlidersHorizontal, Square, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react';
-import { activeJob, modelDefaults, optionParts, statusNames, taskNames, uid } from './api';
+import { activeJob, api, modelDefaults, optionParts, statusNames, taskNames, uid } from './api';
 import { canRunWithWeights, checkpointChoices, checkpointRequest, checkpointUnavailable, selectedCheckpoint as checkpointSelection } from './checkpoints';
 import { deviceAvailable } from './systemDevices';
+import { inferenceRuntimeDetails } from './inferenceRuntime';
+import './inferenceRuntime.css';
 
 const CanvasContext = createContext(null);
 const STORAGE_KEY = 'vision-lab-canvas-v1';
@@ -26,13 +28,15 @@ export function ParameterField({ param, value, onChange, compact = false, disabl
 }
 function InferenceNode({ id, data, selected }) {
   const context = useContext(CanvasContext);
-  const { models, media, jobs, system, confirmLicense, checkpoints: registeredCheckpoints, sharedInput, selectedMedia, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder } = context;
+  const { models, media, jobs, system, confirmLicense, checkpoints: registeredCheckpoints, sharedInput, selectedMedia, clearingCache, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder } = context;
   const [advanced, setAdvanced] = useState(false);
   const [original, setOriginal] = useState(false);
   const model = models.find(item => item.id === data.modelId);
   const job = jobs.find(item => item.id === data.jobId);
   const active = activeJob(job);
   const result = job?.status === 'completed' ? job.result : null;
+  const runtime = inferenceRuntimeDetails(result);
+  const hasRuntime = runtime.cacheLabel || runtime.loadTime || runtime.totalTime;
   const nextAsset = media.find(item => item.id === (sharedInput ? selectedMedia : data.mediaId));
   const runMediaId = data.runMediaId || job?.media_id;
   const asset = (active || result) && runMediaId ? media.find(item => item.id === runMediaId) || nextAsset : nextAsset;
@@ -68,9 +72,9 @@ function InferenceNode({ id, data, selected }) {
       {result && asset && <span className="preview-source" title={`這次結果的輸入：${asset.name}`}>{asset.name}</span>}
     </div>
     <div className="node-result nodrag nowheel">
-      {result ? <><div className="result-facts"><span><i className="status-dot"/>推論完成</span>{result.inference_ms != null && <b>{Number(result.inference_ms).toFixed(0)} <small>ms</small></b>}{predictions.length > 0 && <span>{predictions.length} 個預測</span>}{result.frames != null && <span>{result.frames} 幀</span>}</div>{predictions.length > 0 ? <div className="prediction-list">{predictions.slice(0, 12).map((prediction, index) => <span key={index}>{prediction.label}<b>{Number.isFinite(prediction.score) ? `${(prediction.score * 100).toFixed(1)}%` : ''}</b></span>)}{predictions.length > 12 && <span>+{predictions.length - 12}</span>}</div> : <p className="result-summary">{typeof result.summary === 'string' ? result.summary : '執行完成，沒有回傳分類或偵測標籤。'}</p>}</> : job?.status === 'failed' ? <div className="inline-error">{job.error || job.message || '執行失敗，請檢查模型設定與任務紀錄。'}</div> : <p className="result-placeholder">{active ? job.message || '實際執行後顯示辨識結果與耗時' : reason || '準備就緒，開始後顯示真實辨識結果與耗時'}</p>}
+      {result ? <><div className="result-facts"><span><i className="status-dot"/>推論完成</span>{Number.isFinite(result.inference_ms) && result.inference_ms >= 0 && <b title={asset?.kind === 'video' ? '取樣影格或片段的平均推論耗時，不含模型載入' : '單張圖片推論耗時，不含模型載入'}><small>{asset?.kind === 'video' ? '平均推論' : '推論'} </small>{result.inference_ms.toFixed(0)} <small>ms</small></b>}{predictions.length > 0 && <span>{predictions.length} 個預測</span>}{result.frames != null && <span>{result.frames} 幀</span>}</div>{hasRuntime && <div className="inference-runtime">{runtime.cacheLabel && <span className="runtime-cache">{runtime.cacheLabel}</span>}{runtime.loadTime && <span>模型載入 {runtime.loadTime}</span>}{runtime.totalTime && <span title="含模型載入、讀檔、推論與結果編碼；不含排隊時間。">本次總耗時 {runtime.totalTime}</span>}</div>}{predictions.length > 0 ? <div className="prediction-list">{predictions.slice(0, 12).map((prediction, index) => <span key={index}>{prediction.label}<b>{Number.isFinite(prediction.score) ? `${(prediction.score * 100).toFixed(1)}%` : ''}</b></span>)}{predictions.length > 12 && <span>+{predictions.length - 12}</span>}</div> : <p className="result-summary">{typeof result.summary === 'string' ? result.summary : '執行完成，沒有回傳分類或偵測標籤。'}</p>}</> : job?.status === 'failed' ? <div className="inline-error">{job.error || job.message || '執行失敗，請檢查模型設定與任務紀錄。'}</div> : <p className="result-placeholder">{active ? job.message || '實際執行後顯示辨識結果與耗時' : reason || '準備就緒，開始後顯示真實辨識結果與耗時'}</p>}
     </div>
-    <div className="node-footer nodrag"><span className={`job-status ${job?.status || 'idle'}`}><i/>{job ? statusNames[job.status] : '尚未執行'}</span>{active ? <button className="button secondary small" onClick={() => cancelJob(job.id)}><Square size={12}/>取消</button> : <button className="button primary small" disabled={Boolean(reason)} title={reason || '執行這個推論實驗'} onClick={() => runNode(id)}><Play size={13} fill="currentColor"/>開始推論</button>}</div>
+    <div className="node-footer nodrag"><span className={`job-status ${job?.status || 'idle'}`}><i/>{job ? statusNames[job.status] : '尚未執行'}</span>{active ? <button className="button secondary small" onClick={() => cancelJob(job.id)}><Square size={12}/>取消</button> : <button className="button primary small" disabled={Boolean(reason) || clearingCache} title={clearingCache ? '正在釋放模型，請稍候' : reason || '執行這個推論實驗'} onClick={() => runNode(id)}><Play size={13} fill="currentColor"/>開始推論</button>}</div>
   </div>;
 }
 const nodeTypes = { inference: InferenceNode };
@@ -84,6 +88,7 @@ function CanvasInner(props) {
   const [query, setQuery] = useState('');
   const [uploading, setUploading] = useState(false);
   const [startingAll, setStartingAll] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const fileInput = useRef(null), importInput = useRef(null);
   const flow = useReactFlow();
@@ -129,6 +134,7 @@ function CanvasInner(props) {
     setNodes(previous => previous.filter(item => item.id !== id));
   }
   async function runNode(id) {
+    if (clearingCache) return;
     const node = nodesRef.current.find(item => item.id === id); if (!node || activeJob(jobs.find(item => item.id === node.data.jobId))) return;
     const model = models.find(item => item.id === node.data.modelId), mediaId = sharedInput ? selectedMedia : node.data.mediaId;
     const asset = media.find(item => item.id === mediaId);
@@ -139,6 +145,13 @@ function CanvasInner(props) {
     catch (error) { notify(error.message, true); }
   }
   async function runAll() { setStartingAll(true); for (const node of nodes) await runNode(node.id); setStartingAll(false); }
+  async function clearModelCache() {
+    if (clearingCache || startingAll || jobs.some(activeJob)) return;
+    setClearingCache(true);
+    try { await api('/inference-cache/clear', { method: 'POST' }); notify('已釋放推論模型，下次執行會重新載入。'); }
+    catch (error) { notify(error.message, true); }
+    finally { setClearingCache(false); }
+  }
   function arrange() { let offset = 28; setNodes(previous => previous.map(node => { const next = { ...node, position: { x: offset, y: 30 } }; offset += Number(node.style?.width || 420) + 32; return next; })); setTimeout(() => fitReadable(), 80); }
   function exportCanvas() {
     const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), nodes, selectedMedia, sharedInput }, null, 2)], { type: 'application/json' });
@@ -152,12 +165,12 @@ function CanvasInner(props) {
   async function onUpload(event) { const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return; setUploading(true); try { for (const file of files) { if (file.size > 512 * 1024 * 1024) throw new Error(`${file.name} 超過 512 MB。`); const asset = await uploadMedia(file); setSelectedMedia(asset.id); } } catch (error) { notify(error.message, true); } finally { setUploading(false); } }
   const filtered = media.filter(item => (filter === 'all' || item.kind === filter) && item.name.toLowerCase().includes(query.toLowerCase()));
   const asset = media.find(item => item.id === selectedMedia);
-  const context = { models, media, jobs, system, confirmLicense, checkpoints, sharedInput, selectedMedia, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder: nodes.map(node => node.id) };
+  const context = { models, media, jobs, system, confirmLicense, checkpoints, sharedInput, selectedMedia, clearingCache, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder: nodes.map(node => node.id) };
   return <main className="inference-page">
     <div className="page-intro"><div><span className="eyebrow"><span/>INFERENCE PLAYGROUND</span><h1>一個畫布，多種可能<span className="accent-dot">。</span></h1><p>將模型並排，調整參數，直接比較影像與影片的辨識結果。</p></div><div className="intro-actions"><button className="button ghost" onClick={() => importInput.current?.click()}><ArrowUpFromLine size={15}/>匯入配置</button><button className="button secondary" onClick={exportCanvas}><ArrowDownToLine size={15}/>儲存畫布</button><input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importCanvas}/></div></div>
     <div className="workspace-shell">
       <aside className="media-sidebar"><div className="panel-heading"><span><Layers2 size={16}/>素材庫</span><b>{media.length}</b></div><button className="upload-drop" onClick={() => fileInput.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle size={22} className="spin"/> : <Upload size={22}/>}<strong>{uploading ? '正在上傳素材' : '加入你的影像或影片'}</strong><span>JPG · PNG · WEBP · MP4 · MOV</span><small>每個檔案上限 512 MB</small></button><input type="file" ref={fileInput} accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/x-msvideo,video/webm" multiple hidden onChange={onUpload}/><div className="library-heading"><span>所有素材</span><small>{filtered.length} ITEMS</small></div><div className="media-filter"><button onClick={() => setFilter('all')} className={filter === 'all' ? 'active' : ''}>全部</button><button onClick={() => setFilter('image')} className={filter === 'image' ? 'active' : ''}><Image size={12}/>圖片</button><button onClick={() => setFilter('video')} className={filter === 'video' ? 'active' : ''}><Film size={12}/>影片</button></div><label className="search-input"><Search size={14}/><input placeholder="搜尋素材名稱" value={query} onChange={event => setQuery(event.target.value)}/></label><div className="media-grid">{filtered.map(item => <button className={`media-item ${selectedMedia === item.id ? 'selected' : ''}`} key={item.id} title={item.name} onClick={() => setSelectedMedia(item.id)}><div>{item.kind === 'video' ? <><video src={item.url} preload="metadata" muted/><span className="media-kind"><Clapperboard size={15}/></span></> : <img src={item.url} alt={item.name} loading="lazy"/>}<span className="media-check">✓</span></div><span>{item.name}</span></button>)}{filtered.length === 0 && <p className="empty-text">沒有符合的素材</p>}</div><div className="media-selection"><span className="eyebrow">CURRENT INPUT</span><strong>{asset?.name || '尚未選擇素材'}</strong><span>{asset?.kind === 'video' ? '影片' : asset ? '圖片' : '從上方素材庫開始'}{asset?.width && asset?.height ? ` · ${asset.width} × ${asset.height}` : ''}</span></div></aside>
-      <section className="canvas-workspace"><div className="canvas-toolbar"><div className="canvas-title"><span className="canvas-dot"/>比較畫布 <b>{nodes.length}</b></div><label className="switch-label"><input type="checkbox" checked={sharedInput} onChange={event => setSharedInput(event.target.checked)}/><span className="switch"/>共享輸入</label><div className="toolbar-separator"/><button className="button ghost small" disabled={!nodes.length || startingAll} onClick={runAll}>{startingAll ? <LoaderCircle className="spin" size={14}/> : <Play size={13}/>}全部執行</button><button className="button primary small" onClick={addNode}><Plus size={16}/>新增區塊</button></div>
+      <section className="canvas-workspace"><div className="canvas-toolbar"><div className="canvas-title"><span className="canvas-dot"/>比較畫布 <b>{nodes.length}</b></div><label className="switch-label"><input type="checkbox" checked={sharedInput} onChange={event => setSharedInput(event.target.checked)}/><span className="switch"/>共享輸入</label><div className="toolbar-separator"/><button className="button ghost small clear-model-cache" disabled={clearingCache || startingAll || jobs.some(activeJob)} title={jobs.some(activeJob) ? '請等待執行中與排隊任務結束' : '釋放已載入的推論模型；下次執行會重新載入。'} onClick={clearModelCache}>{clearingCache ? <LoaderCircle className="spin" size={13}/> : <Trash2 size={13}/>}釋放模型</button><button className="button ghost small" disabled={!nodes.length || startingAll || clearingCache} onClick={runAll}>{startingAll ? <LoaderCircle className="spin" size={14}/> : <Play size={13}/>}全部執行</button><button className="button primary small" onClick={addNode}><Plus size={16}/>新增區塊</button></div>
         <div className="flow-wrapper"><CanvasContext.Provider value={context}><ReactFlow nodes={nodes} edges={[]} onNodesChange={onNodesChange} nodeTypes={nodeTypes} fitView minZoom={0.25} maxZoom={1.6} fitViewOptions={{ padding: 0.08, minZoom: READABLE_ZOOM, maxZoom: 1, nodes: nodes.slice(0, 2).map(node => ({ id: node.id })) }} deleteKeyCode={null} proOptions={{ hideAttribution: true }} nodesConnectable={false} panOnScroll={false} zoomOnDoubleClick={false}><Background color="#39413e" gap={22} size={1}/></ReactFlow></CanvasContext.Provider>
         {!nodes.length && <div className="empty-canvas"><span className="empty-canvas-icon"><ScanLine size={35}/></span><h2>你的第一個比較，從這裡開始</h2><p>新增區塊，選擇一個本機模型來測試。</p><button className="button primary" onClick={addNode}><Plus size={16}/>新增推論區塊</button></div>}
         <div className="canvas-bottom"><div className="canvas-controls"><button title="放大" aria-label="放大" onClick={() => flow.zoomIn({ duration: 150 })}><ZoomIn size={17}/></button><button title="縮小" aria-label="縮小" onClick={() => flow.zoomOut({ duration: 150 })}><ZoomOut size={17}/></button><i/><button title="適合畫面" aria-label="適合畫面" onClick={() => flow.fitView({ padding: 0.1, maxZoom: 1, duration: 200 })}><Expand size={17}/></button><button title="自動並排" aria-label="自動並排" onClick={arrange}><Layers2 size={17}/></button></div><span className="canvas-hint">拖曳標題移動區塊 · 滾輪縮放 · 點選邊角調整大小</span><span className="autosaved"><span/>自動儲存於此瀏覽器</span></div></div>

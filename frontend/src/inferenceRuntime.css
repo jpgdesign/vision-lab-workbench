@@ -1,0 +1,7 @@
+.inference-runtime { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 8px; color: #94ac9b; font-size: 9px; line-height: 1.5; }
+.inference-runtime .runtime-cache { color: #b2d9be; }
+.inference-node .result-facts { flex-wrap: wrap; }
+.canvas-toolbar .clear-model-cache { white-space: nowrap; }
+@media (max-width: 1100px) {
+  .canvas-toolbar { flex-wrap: wrap; height: auto; min-height: 57px; padding-top: 10px; padding-bottom: 10px; gap: 8px; }
+}

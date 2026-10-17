@@ -43,6 +43,11 @@ class JobManager:
         self.thread: threading.Thread | None = None
         self.process: subprocess.Popen | None = None
         self.active_id: str | None = None
+        # A custom command factory retains the original one-process-per-job
+        # contract. Production inference alone uses the reusable service.
+        self._persistent_inference = command_factory is None
+        self._inference_process: subprocess.Popen | None = None
+        self._service_lock = threading.RLock()
         self.command_factory = command_factory or (lambda request, output: [sys.executable, "-u", "-m", "backend.worker", "--request", str(request), "--output", str(output)])
         self.jobs: dict[str, dict[str, Any]] = {}
         if self.registry_path.exists():
@@ -88,6 +93,15 @@ class JobManager:
         self.pending.put(None)
         if self.thread and self.thread is not threading.current_thread():
             self.thread.join(timeout=10)
+        self._stop_inference_service()
+
+    def release_inference_cache(self) -> bool:
+        """Release idle GPU models, waiting for their owning process to exit."""
+        with self._service_lock:
+            with self.lock:
+                if any(job.get("status") in {"queued", "running"} for job in self.jobs.values()):
+                    raise ValueError("仍有執行中或等待中的工作，請完成或取消後再釋放模型快取。")
+            return self._stop_inference_service()
 
     def submit(self, request: dict[str, Any]) -> dict[str, Any]:
         with self.lock:
@@ -139,7 +153,7 @@ class JobManager:
             process = self.process if self.active_id == job_id else None
             self._save()
         if process and process.poll() is None:
-            self._terminate(process)
+            self._stop_process(process)
         if job.get("kind") == "live":
             self._cleanup_live_inputs(job_id)
         return self.get(job_id)
@@ -147,6 +161,67 @@ class JobManager:
     def _cleanup_live_inputs(self, job_id: str) -> None:
         from .live import cleanup_live_inputs
         cleanup_live_inputs(self.job_root, job_id)
+
+    def _worker_environment(self) -> dict[str, str]:
+        environment = dict(os.environ)
+        environment["VISION_WORKBENCH_RUNTIME"] = str(self.runtime)
+        environment.update(PYTHONUNBUFFERED="1", PYTHONUTF8="1", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
+        return environment
+
+    @staticmethod
+    def _process_options() -> dict[str, Any]:
+        return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {"start_new_session": True}
+
+    def _inference_command(self) -> list[str]:
+        return [sys.executable, "-u", "-m", "backend.worker", "--inference-service"]
+
+    def _stop_process(self, process: subprocess.Popen, *, graceful: bool = False) -> None:
+        # Serialize disposal and creation: a cancelled worker must have actually
+        # exited before the next job can allocate another set of GPU models.
+        with self._service_lock:
+            with self.lock:
+                if self._inference_process is process:
+                    self._inference_process = None
+            if graceful and process.poll() is None and process.stdin is not None:
+                try:
+                    process.stdin.close()
+                    process.wait(timeout=2)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            self._terminate(process)
+            if process.stdin is not None:
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
+
+    def _stop_inference_service(self) -> bool:
+        with self._service_lock:
+            with self.lock:
+                process = self._inference_process
+            if process is None:
+                return False
+            was_running = process.poll() is None
+            self._stop_process(process, graceful=True)
+            return was_running
+
+    def _get_inference_service(self, job_id: str) -> subprocess.Popen | None:
+        with self._service_lock:
+            with self.lock:
+                if self.stopping.is_set() or self.jobs[job_id].get("status") != "running":
+                    return None
+                process = self._inference_process
+                if process is not None and process.poll() is not None:
+                    self._stop_process(process)
+                    process = None
+                if process is None:
+                    process = subprocess.Popen(self._inference_command(), cwd=self.app_root,
+                                               env=self._worker_environment(), stdin=subprocess.PIPE,
+                                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                               **self._process_options())
+                    self._inference_process = process
+                self.process = process
+                return process
 
     @staticmethod
     def _terminate(process: subprocess.Popen) -> None:
@@ -191,7 +266,7 @@ class JobManager:
                 with self.lock:
                     remaining = self.process
                 if remaining is not None and remaining.poll() is None:
-                    self._terminate(remaining)
+                    self._stop_process(remaining)
                 with self.lock:
                     self.process = None
                     self.active_id = None
@@ -203,17 +278,25 @@ class JobManager:
     def _run(self, job_id: str) -> None:
         directory = self.job_root / job_id
         with self.lock:
+            if self.jobs[job_id].get("status") != "queued" or self.stopping.is_set():
+                return
+            use_service = self._persistent_inference and self.jobs[job_id].get("kind") == "inference"
+        if not use_service:
+            # Training and live sessions own their process and GPU exclusively.
+            self._stop_inference_service()
+        with self.lock:
             job = self.jobs[job_id]
             if job.get("status") != "queued" or self.stopping.is_set():
                 return
             job.update(status="running", started_at=now_iso(), message="載入本機模型")
             self.active_id = job_id
             self._save()
+        if use_service:
+            self._run_persistent_inference(job_id, directory)
+            return
         log_path = directory / "worker.log"
-        environment = dict(os.environ)
-        environment["VISION_WORKBENCH_RUNTIME"] = str(self.runtime)
-        environment.update(PYTHONUNBUFFERED="1", PYTHONUTF8="1", HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
-        options = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {"start_new_session": True}
+        environment = self._worker_environment()
+        options = self._process_options()
         with log_path.open("wb") as output:
             with self.lock:
                 # Cancellation could happen between queued->running and spawn.
@@ -228,27 +311,85 @@ class JobManager:
                     self._terminate(process)
                     break
             self._consume_events(job_id, directory / "events.jsonl", offset)
+        payload = self._read_result(directory / "result.json") or {}
+        self._finish_job(job_id, payload, process.returncode == 0,
+                         f"工作程序結束（代碼 {process.returncode}）。")
+
+    @staticmethod
+    def _read_result(path: Path) -> dict[str, Any] | None:
+        try:
+            if not path.is_file():
+                return None
+            if path.stat().st_size > 20 * 1024**2:
+                raise ValueError("工作結果超過大小限制。")
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (FileNotFoundError, PermissionError):
+            # Windows can briefly deny reads while the final atomic rename is
+            # completing. A missing file is never interpreted as completion.
+            return None
+        if not isinstance(payload, dict):
+            raise ValueError("工作結果必須是 JSON 物件。")
+        return payload
+
+    def _run_persistent_inference(self, job_id: str, directory: Path) -> None:
+        process = None
+        reusable = False
+        try:
+            for name in ("result.json", "result.json.tmp"):
+                (directory / name).unlink(missing_ok=True)
+            token = uuid.uuid4().hex
+            process = self._get_inference_service(job_id)
+            if process is None:
+                return
+            command = {"job_id": job_id, "dispatch_token": token,
+                       "request_path": str(directory / "request.json"), "output_dir": str(directory)}
+            # Do not hold the state lock while writing a pipe: cancellation must
+            # be able to kill a worker that stops reading its input.
+            process.stdin.write((json.dumps(command, ensure_ascii=True) + "\n").encode("utf-8"))
+            process.stdin.flush()
+            offset = 0
+            while True:
+                offset = self._consume_events(job_id, directory / "events.jsonl", offset)
+                with self.lock:
+                    cancelled = self.jobs[job_id].get("status") != "running"
+                if cancelled or self.stopping.is_set():
+                    return
+                payload = self._read_result(directory / "result.json")
+                if payload is not None:
+                    if payload.get("job_id") != job_id or payload.get("dispatch_token") != token:
+                        raise ValueError("推論程序回傳的工作識別不符，已停止程序。")
+                    if payload.get("status") not in {"completed", "failed"}:
+                        raise ValueError("推論程序回傳無效的完成狀態。")
+                    self._consume_events(job_id, directory / "events.jsonl", offset)
+                    reusable = self._finish_job(job_id, payload, True, "推論工作失敗。")
+                    return
+                if process.poll() is not None:
+                    self._finish_job(job_id, {}, False, f"推論程序意外結束（代碼 {process.returncode}）。下一次推論將重新載入模型。")
+                    return
+                self.stopping.wait(0.1)
+        finally:
+            if process is not None and not reusable:
+                self._stop_process(process)
+            with self.lock:
+                if self.process is process:
+                    self.process = None
+
+    def _finish_job(self, job_id: str, payload: dict[str, Any], success: bool, fallback_error: str) -> bool:
         with self.lock:
             job = self.jobs[job_id]
-            if job.get("status") == "cancelled":
-                return
-            result_path = directory / "result.json"
-            payload: dict[str, Any] = {}
-            if result_path.is_file() and result_path.stat().st_size <= 20 * 1024**2:
-                try:
-                    payload = json.loads(result_path.read_text(encoding="utf-8-sig"))
-                except (ValueError, OSError):
-                    pass
-            if process.returncode == 0 and payload.get("status") == "completed":
+            if job.get("status") != "running":
+                return False
+            if success and payload.get("status") == "completed":
                 try:
                     result, artifacts = self._public_result(job_id, payload.get("result", {}))
                     job.update(status="completed", progress=1.0, message="執行完成", result=result, _artifacts=artifacts)
                 except (ValueError, OSError) as exc:
                     job.update(status="failed", message="輸出檔案驗證失敗", error=str(exc))
             else:
-                error = payload.get("error") or f"工作程序結束（代碼 {process.returncode}）。"
+                error = payload.get("error") or fallback_error
                 job.update(status="failed", message="工作執行失敗", error=str(error)[:4000])
             try:
+                log_path = self.job_root / job_id / "worker.log"
                 with log_path.open("rb") as log_file:
                     log_file.seek(max(0, log_path.stat().st_size - 12_000))
                     tail = log_file.read().decode("utf-8", errors="replace")
@@ -258,6 +399,7 @@ class JobManager:
                 pass
             job["finished_at"] = now_iso()
             self._save()
+            return True
 
     def _consume_events(self, job_id: str, path: Path, offset: int) -> int:
         if not path.is_file():

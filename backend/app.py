@@ -296,6 +296,14 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
             torch_version = None
         return {"status": "ok", "gpu": gpu_cache["value"], "queue": manager.counts(), "runtime": {"python": sys.version.split()[0], "torch": torch_version}}
 
+    @application.post("/api/inference-cache/clear")
+    def clear_inference_cache():
+        try:
+            released = manager.release_inference_cache()
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"released": released, "message": "已釋放推論模型；下次執行會重新載入。"}
+
     @application.get("/api/models")
     def models():
         return {"models": load_models()}
