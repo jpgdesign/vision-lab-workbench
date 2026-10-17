@@ -1,0 +1,406 @@
+{
+  "info": {
+    "description": "COCO 2017 Dataset",
+    "url": "http://cocodataset.org",
+    "version": "1.0",
+    "year": 2017,
+    "contributor": "COCO Consortium",
+    "date_created": "2017/09/01"
+  },
+  "licenses": [
+    {
+      "url": "http://creativecommons.org/licenses/by-nc-sa/2.0/",
+      "id": 1,
+      "name": "Attribution-NonCommercial-ShareAlike License"
+    },
+    {
+      "url": "http://creativecommons.org/licenses/by-nc/2.0/",
+      "id": 2,
+      "name": "Attribution-NonCommercial License"
+    },
+    {
+      "url": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+      "id": 3,
+      "name": "Attribution-NonCommercial-NoDerivs License"
+    },
+    {
+      "url": "http://creativecommons.org/licenses/by/2.0/",
+      "id": 4,
+      "name": "Attribution License"
+    },
+    {
+      "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+      "id": 5,
+      "name": "Attribution-ShareAlike License"
+    },
+    {
+      "url": "http://creativecommons.org/licenses/by-nd/2.0/",
+      "id": 6,
+      "name": "Attribution-NoDerivs License"
+    },
+    {
+      "url": "http://flickr.com/commons/usage/",
+      "id": 7,
+      "name": "No known copyright restrictions"
+    },
+    {
+      "url": "http://www.usa.gov/copyright.shtml",
+      "id": 8,
+      "name": "United States Government Work"
+    }
+  ],
+  "images": [
+    {
+      "license": 2,
+      "file_name": "000000025424.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000025424.jpg",
+      "height": 640,
+      "width": 427,
+      "date_captured": "2013-11-23 03:10:19",
+      "flickr_url": "http://farm4.staticflickr.com/3637/3659789530_05f443b190_z.jpg",
+      "id": 25424
+    },
+    {
+      "license": 2,
+      "file_name": "000000118594.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000118594.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-17 21:53:31",
+      "flickr_url": "http://farm8.staticflickr.com/7139/7766356622_5982b9784d_z.jpg",
+      "id": 118594
+    },
+    {
+      "license": 5,
+      "file_name": "000000173008.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000173008.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-14 18:06:19",
+      "flickr_url": "http://farm2.staticflickr.com/1162/1157171906_e210cf9a4e_z.jpg",
+      "id": 173008
+    },
+    {
+      "license": 3,
+      "file_name": "000000265816.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000265816.jpg",
+      "height": 406,
+      "width": 640,
+      "date_captured": "2013-11-19 02:23:15",
+      "flickr_url": "http://farm8.staticflickr.com/7288/8763417766_4d635fb8e7_z.jpg",
+      "id": 265816
+    },
+    {
+      "license": 5,
+      "file_name": "000000415727.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000415727.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-22 20:53:22",
+      "flickr_url": "http://farm8.staticflickr.com/7093/7243978106_95b5652943_z.jpg",
+      "id": 415727
+    },
+    {
+      "license": 3,
+      "file_name": "000000459887.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000459887.jpg",
+      "height": 640,
+      "width": 480,
+      "date_captured": "2013-11-19 20:54:21",
+      "flickr_url": "http://farm6.staticflickr.com/5224/5606990845_a24f7232ca_z.jpg",
+      "id": 459887
+    },
+    {
+      "license": 1,
+      "file_name": "000000493334.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000493334.jpg",
+      "height": 311,
+      "width": 500,
+      "date_captured": "2013-11-20 18:16:22",
+      "flickr_url": "http://farm1.staticflickr.com/35/94672746_532683d517_z.jpg",
+      "id": 493334
+    },
+    {
+      "license": 4,
+      "file_name": "000000495146.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000495146.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-17 03:29:05",
+      "flickr_url": "http://farm8.staticflickr.com/7375/9211776644_83a3bd9c9b_z.jpg",
+      "id": 495146
+    },
+    {
+      "license": 5,
+      "file_name": "000000503755.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000503755.jpg",
+      "height": 640,
+      "width": 480,
+      "date_captured": "2013-11-21 05:52:25",
+      "flickr_url": "http://farm3.staticflickr.com/2762/4286031910_a8de6a0aa1_z.jpg",
+      "id": 503755
+    },
+    {
+      "license": 4,
+      "file_name": "000000527695.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000527695.jpg",
+      "height": 426,
+      "width": 640,
+      "date_captured": "2013-11-19 22:37:46",
+      "flickr_url": "http://farm9.staticflickr.com/8295/7871176758_8fd20efcd5_z.jpg",
+      "id": 527695
+    }
+  ],
+  "annotations": [
+    {
+      "image_id": 173008,
+      "id": 42644,
+      "caption": "A man in a tropical print shirt with glasses and long hair is eating a banana."
+    },
+    {
+      "image_id": 173008,
+      "id": 43283,
+      "caption": "A man wearing a Hawaiian shirt eats a banana instead of pastries."
+    },
+    {
+      "image_id": 173008,
+      "id": 44378,
+      "caption": "Man taking a bite of a half peeled banana. "
+    },
+    {
+      "image_id": 173008,
+      "id": 46433,
+      "caption": "a person eating a banana in a kitchen"
+    },
+    {
+      "image_id": 173008,
+      "id": 47222,
+      "caption": "A man eating a banana at a kitchen counter."
+    },
+    {
+      "image_id": 495146,
+      "id": 87630,
+      "caption": "A train crosses as a bunch of gathered vehicles watch."
+    },
+    {
+      "image_id": 495146,
+      "id": 89910,
+      "caption": "A  parking lot next to a marina next to a railroad"
+    },
+    {
+      "image_id": 495146,
+      "id": 91371,
+      "caption": "Group of people standing beside their cars on a pier."
+    },
+    {
+      "image_id": 495146,
+      "id": 93795,
+      "caption": "Colorful commuter train goes through a marina area on a cloudy day"
+    },
+    {
+      "image_id": 495146,
+      "id": 94317,
+      "caption": "People are in a parking lot  beside the water, while a train is in the background."
+    },
+    {
+      "image_id": 118594,
+      "id": 390681,
+      "caption": "A Texas Longhorn bull grazing on grass. "
+    },
+    {
+      "image_id": 118594,
+      "id": 514941,
+      "caption": "the cog is grazing on the grass, he has big horns"
+    },
+    {
+      "image_id": 118594,
+      "id": 516297,
+      "caption": "A Texas longhorn bull eating grass by a barbed wire fence"
+    },
+    {
+      "image_id": 118594,
+      "id": 516975,
+      "caption": "Brown and white cow with long horns standing next to a chain fence. "
+    },
+    {
+      "image_id": 118594,
+      "id": 517464,
+      "caption": "two really long horned cows eating in a field"
+    },
+    {
+      "image_id": 265816,
+      "id": 222110,
+      "caption": "a white horse pulling a carriage with a man on it."
+    },
+    {
+      "image_id": 265816,
+      "id": 245291,
+      "caption": "White horse carrying a man in a black buggy."
+    },
+    {
+      "image_id": 265816,
+      "id": 246260,
+      "caption": "A horse is standing with a black carriage"
+    },
+    {
+      "image_id": 265816,
+      "id": 247610,
+      "caption": "A horse, buggy and driver sitting in front of a building."
+    },
+    {
+      "image_id": 265816,
+      "id": 251189,
+      "caption": "A man in a horse drawn carriage parked in front of a stone building."
+    },
+    {
+      "image_id": 459887,
+      "id": 274082,
+      "caption": "A group of slightly bruised banana's in a bowl."
+    },
+    {
+      "image_id": 459887,
+      "id": 274391,
+      "caption": "A bunch of bananas in a metal bowl."
+    },
+    {
+      "image_id": 459887,
+      "id": 275639,
+      "caption": "A steel strainer with four ripe banana's on a table."
+    },
+    {
+      "image_id": 459887,
+      "id": 275813,
+      "caption": "Four bananas in a bunch with brown dots"
+    },
+    {
+      "image_id": 459887,
+      "id": 277676,
+      "caption": "three yellow  bananas sitting inside of a basket"
+    },
+    {
+      "image_id": 527695,
+      "id": 361141,
+      "caption": "A bowl of some broccoli that is chopped. "
+    },
+    {
+      "image_id": 527695,
+      "id": 361969,
+      "caption": "Cooked broccoli in serving dish sitting on cloth hot pad."
+    },
+    {
+      "image_id": 527695,
+      "id": 364837,
+      "caption": "A white tray of broccoli on a table."
+    },
+    {
+      "image_id": 527695,
+      "id": 365179,
+      "caption": "A white and blue plate full of broccoli."
+    },
+    {
+      "image_id": 527695,
+      "id": 367963,
+      "caption": "The broccoli platter in the dish is mostly eaten up."
+    },
+    {
+      "image_id": 503755,
+      "id": 49732,
+      "caption": "a person on a tennis court in tennis wear "
+    },
+    {
+      "image_id": 503755,
+      "id": 52324,
+      "caption": "a woman in tennis gear holding a tennis racket on a tennis court"
+    },
+    {
+      "image_id": 503755,
+      "id": 53638,
+      "caption": "Tennis player on court holding racket with hand on hip."
+    },
+    {
+      "image_id": 503755,
+      "id": 59005,
+      "caption": "A woman holding a tennis racket standing on a tennis court."
+    },
+    {
+      "image_id": 503755,
+      "id": 60175,
+      "caption": "A tennis player is playing in a match."
+    },
+    {
+      "image_id": 493334,
+      "id": 227221,
+      "caption": "A sheet cake with a frosting cell phone on it."
+    },
+    {
+      "image_id": 493334,
+      "id": 245167,
+      "caption": "Intricate cake with a saying and cell phone stuck in it."
+    },
+    {
+      "image_id": 493334,
+      "id": 245845,
+      "caption": "A cake has a pond and a cell phone on it and green icing for trimming."
+    },
+    {
+      "image_id": 493334,
+      "id": 255634,
+      "caption": "A large sheet cake with a frosted mobile phone."
+    },
+    {
+      "image_id": 493334,
+      "id": 264892,
+      "caption": "A sheet cake with a lake scene displays the words, \"What is the Pickup Line Today?\""
+    },
+    {
+      "image_id": 25424,
+      "id": 508892,
+      "caption": "A man hitting a tennis ball with a tennis racquet."
+    },
+    {
+      "image_id": 25424,
+      "id": 510779,
+      "caption": "a tennis player swinging at the tennis ball"
+    },
+    {
+      "image_id": 25424,
+      "id": 549347,
+      "caption": "A tennis player hitting a ball on the court "
+    },
+    {
+      "image_id": 25424,
+      "id": 554051,
+      "caption": "A male tennis player swinging at a tennis ball."
+    },
+    {
+      "image_id": 25424,
+      "id": 555872,
+      "caption": "A tennis player hits the ball up from the racket."
+    },
+    {
+      "image_id": 415727,
+      "id": 692005,
+      "caption": "A couple of men standing next to each other."
+    },
+    {
+      "image_id": 415727,
+      "id": 692305,
+      "caption": "A baseball player grabbing a bat, in a game."
+    },
+    {
+      "image_id": 415727,
+      "id": 692635,
+      "caption": "a boy reaching for a baseball bat in a dugout."
+    },
+    {
+      "image_id": 415727,
+      "id": 693283,
+      "caption": "Baseball players taking baseball bats from a wall."
+    },
+    {
+      "image_id": 415727,
+      "id": 693634,
+      "caption": "A boy with catchers gear on looking at some baseball bats."
+    }
+  ]
+}

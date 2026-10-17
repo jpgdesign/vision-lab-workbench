@@ -1,0 +1,23 @@
+{
+  "file_name": "freezy_traffic.webm",
+  "title": "Freezy Traffic",
+  "author": "LIFEOFVIDS",
+  "author_url": "https://vimeo.com/lifeofvids",
+  "original_source": "https://vimeo.com/206635019",
+  "download_url": "https://upload.wikimedia.org/wikipedia/commons/5/5b/Freezy_Traffic.webm",
+  "source_page": "https://commons.wikimedia.org/wiki/File:Freezy_Traffic.webm",
+  "source_page_revision": "https://commons.wikimedia.org/w/index.php?title=File:Freezy_Traffic.webm&oldid=1002759918",
+  "license": "CC-BY-3.0",
+  "license_url": "https://creativecommons.org/licenses/by/3.0/",
+  "license_review": "Wikimedia Commons reviewer Daphne Lantier confirmed the Vimeo source license on 2017-03-11.",
+  "downloaded_date": "2026-10-18",
+  "changes": "None. Unmodified original WebM bytes from Wikimedia Commons.",
+  "bytes": 13601697,
+  "sha256": "b5b7da33afd548699a4f0bc8bd6d0d7f7307babb5c68b3f6ae5c1864b480d196",
+  "width": 1920,
+  "height": 1080,
+  "fps": 29.97002997002997,
+  "frames_decoded": 598,
+  "duration_seconds": 19.953266666666668,
+  "ground_truth_annotations": false
+}

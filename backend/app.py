@@ -184,6 +184,20 @@ def _discover_samples(root: Path, registry: Registry) -> None:
                 continue
 
 
+def _default_sample_root() -> Path:
+    bundled = APP_ROOT / "examples" / "media"
+    return bundled if bundled.is_dir() else DEFAULT_SAMPLE_ROOT
+
+
+def _bundled_examples() -> list[dict[str, Any]]:
+    path = APP_ROOT / "examples" / "finetuning" / "coco10_yolo" / "dataset.yaml"
+    available = path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(APP_ROOT.resolve())
+    return [{"id": "coco10_yolo", "name": "COCO 10 圖教學資料集", "format": "yolo_detection",
+             "path": str(path.resolve()), "available": available,
+             "description": "10 張 COCO 圖片與物件框標註，用於練習資料驗證及微調流程；不適合評估泛化能力。",
+             "recommended_params": {"epochs": 1, "batch_size": 1, "workers": 0}}]
+
+
 def _gpu_info() -> dict[str, Any]:
     try:
         options = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {}
@@ -226,7 +240,7 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
         if model_id in MODEL_FILES:
             return {"model_weight_path": str(model_registry.resolve(model_id))}
         return {}
-    sample_root = sample_root if sample_root is not None else DEFAULT_SAMPLE_ROOT
+    sample_root = sample_root if sample_root is not None else _default_sample_root()
     _discover_samples(sample_root, media)
     gpu_cache: dict[str, Any] = {"at": 0.0, "value": {"name": "CPU", "vram_mb": 0, "available": False}}
 
@@ -403,6 +417,12 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
     @application.get("/api/datasets")
     def list_datasets():
         return {"datasets": [_dataset_public(item) for item in datasets.list()]}
+
+    @application.get("/api/examples")
+    def examples():
+        # Templates describe local inputs only. Registration and training
+        # remain explicit actions through the usual validation/job endpoints.
+        return {"datasets": _bundled_examples()}
 
     def register_dataset(result: dict[str, Any]) -> dict[str, Any]:
         if result["valid"]:

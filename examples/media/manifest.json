@@ -1,0 +1,262 @@
+{
+  "dataset": "COCO 2017 validation",
+  "source": "https://cocodataset.org/#download",
+  "annotations_archive": "https://s3.amazonaws.com/images.cocodataset.org/annotations/annotations_trainval2017.zip",
+  "retrieved_date": "2026-10-17",
+  "population": 5000,
+  "selection": "Python random.Random(seed).sample(images sorted by numeric id, 10); display sorted by id",
+  "seed": 20261017,
+  "sample_size": 10,
+  "images": [
+    {
+      "license": 2,
+      "file_name": "000000025424.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000025424.jpg",
+      "height": 640,
+      "width": 427,
+      "date_captured": "2013-11-23 03:10:19",
+      "flickr_url": "http://farm4.staticflickr.com/3637/3659789530_05f443b190_z.jpg",
+      "id": 25424,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000025424.jpg",
+      "bytes": 106398,
+      "sha256": "89e8025ecb6f48125ac826dd5fe51409deae64e98133472adbe6ae62b6a61705",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-nc/2.0/",
+        "id": 2,
+        "name": "Attribution-NonCommercial License"
+      },
+      "annotation_count": 3,
+      "classes": [
+        "person",
+        "sports ball",
+        "tennis racket"
+      ]
+    },
+    {
+      "license": 2,
+      "file_name": "000000118594.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000118594.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-17 21:53:31",
+      "flickr_url": "http://farm8.staticflickr.com/7139/7766356622_5982b9784d_z.jpg",
+      "id": 118594,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000118594.jpg",
+      "bytes": 197930,
+      "sha256": "422552f71b460a7db60633b4037d9a3b97bf7a2c4eb4c91e4fb6b466b0619da0",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-nc/2.0/",
+        "id": 2,
+        "name": "Attribution-NonCommercial License"
+      },
+      "annotation_count": 2,
+      "classes": [
+        "cow"
+      ]
+    },
+    {
+      "license": 5,
+      "file_name": "000000173008.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000173008.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-14 18:06:19",
+      "flickr_url": "http://farm2.staticflickr.com/1162/1157171906_e210cf9a4e_z.jpg",
+      "id": 173008,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000173008.jpg",
+      "bytes": 121891,
+      "sha256": "57e4391ce5b3b06e3b778342e9c4272a9a4a93e9fbb8ab8270f4d0c4dfd3e5c5",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      "annotation_count": 18,
+      "classes": [
+        "banana",
+        "cake",
+        "cup",
+        "microwave",
+        "orange",
+        "oven",
+        "person",
+        "scissors",
+        "toaster"
+      ]
+    },
+    {
+      "license": 3,
+      "file_name": "000000265816.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000265816.jpg",
+      "height": 406,
+      "width": 640,
+      "date_captured": "2013-11-19 02:23:15",
+      "flickr_url": "http://farm8.staticflickr.com/7288/8763417766_4d635fb8e7_z.jpg",
+      "id": 265816,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000265816.jpg",
+      "bytes": 219378,
+      "sha256": "a32a1609153269b5936d90d3c782a9bd9ce435c528ac14892f5f86c80e4a0af0",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+        "id": 3,
+        "name": "Attribution-NonCommercial-NoDerivs License"
+      },
+      "annotation_count": 5,
+      "classes": [
+        "horse",
+        "person",
+        "potted plant"
+      ]
+    },
+    {
+      "license": 5,
+      "file_name": "000000415727.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000415727.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-22 20:53:22",
+      "flickr_url": "http://farm8.staticflickr.com/7093/7243978106_95b5652943_z.jpg",
+      "id": 415727,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000415727.jpg",
+      "bytes": 194878,
+      "sha256": "9160e969a838a9f2005aac2db2c3e0677879daea9dcacecc96aad010b0d6a42c",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      "annotation_count": 11,
+      "classes": [
+        "backpack",
+        "baseball bat",
+        "bench",
+        "person"
+      ]
+    },
+    {
+      "license": 3,
+      "file_name": "000000459887.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000459887.jpg",
+      "height": 640,
+      "width": 480,
+      "date_captured": "2013-11-19 20:54:21",
+      "flickr_url": "http://farm6.staticflickr.com/5224/5606990845_a24f7232ca_z.jpg",
+      "id": 459887,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000459887.jpg",
+      "bytes": 224163,
+      "sha256": "91d4f983a969c27401423dcf207ce6982ddee5dd93a11a81f15b535c6508914f",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+        "id": 3,
+        "name": "Attribution-NonCommercial-NoDerivs License"
+      },
+      "annotation_count": 3,
+      "classes": [
+        "banana",
+        "bowl"
+      ]
+    },
+    {
+      "license": 1,
+      "file_name": "000000493334.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000493334.jpg",
+      "height": 311,
+      "width": 500,
+      "date_captured": "2013-11-20 18:16:22",
+      "flickr_url": "http://farm1.staticflickr.com/35/94672746_532683d517_z.jpg",
+      "id": 493334,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000493334.jpg",
+      "bytes": 102665,
+      "sha256": "06be922134b4177ddea7373a1c92c3236d12e290a9b43c9dfbc018c36fa235f6",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-nc-sa/2.0/",
+        "id": 1,
+        "name": "Attribution-NonCommercial-ShareAlike License"
+      },
+      "annotation_count": 2,
+      "classes": [
+        "cake",
+        "cell phone"
+      ]
+    },
+    {
+      "license": 4,
+      "file_name": "000000495146.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000495146.jpg",
+      "height": 480,
+      "width": 640,
+      "date_captured": "2013-11-17 03:29:05",
+      "flickr_url": "http://farm8.staticflickr.com/7375/9211776644_83a3bd9c9b_z.jpg",
+      "id": 495146,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000495146.jpg",
+      "bytes": 129584,
+      "sha256": "cc4814681163a70e29c6aa2bb463b4d6a3c52a3c23f77b38357498c5ffee2d38",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by/2.0/",
+        "id": 4,
+        "name": "Attribution License"
+      },
+      "annotation_count": 16,
+      "classes": [
+        "boat",
+        "car",
+        "person",
+        "train",
+        "truck"
+      ]
+    },
+    {
+      "license": 5,
+      "file_name": "000000503755.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000503755.jpg",
+      "height": 640,
+      "width": 480,
+      "date_captured": "2013-11-21 05:52:25",
+      "flickr_url": "http://farm3.staticflickr.com/2762/4286031910_a8de6a0aa1_z.jpg",
+      "id": 503755,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000503755.jpg",
+      "bytes": 98898,
+      "sha256": "ebf2bba226a7df755a310889557d08caa0295eceae0e52f60318b1ec5abeef60",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      "annotation_count": 2,
+      "classes": [
+        "person",
+        "tennis racket"
+      ]
+    },
+    {
+      "license": 4,
+      "file_name": "000000527695.jpg",
+      "coco_url": "http://images.cocodataset.org/val2017/000000527695.jpg",
+      "height": 426,
+      "width": 640,
+      "date_captured": "2013-11-19 22:37:46",
+      "flickr_url": "http://farm9.staticflickr.com/8295/7871176758_8fd20efcd5_z.jpg",
+      "id": 527695,
+      "download_url": "https://s3.amazonaws.com/images.cocodataset.org/val2017/000000527695.jpg",
+      "bytes": 247133,
+      "sha256": "c3e455cd18621ea344f3f54f089ba29e7b31c8fdc16c768156eb17c23961f0e3",
+      "license_detail": {
+        "url": "http://creativecommons.org/licenses/by/2.0/",
+        "id": 4,
+        "name": "Attribution License"
+      },
+      "annotation_count": 9,
+      "classes": [
+        "bowl",
+        "broccoli",
+        "dining table"
+      ]
+    }
+  ],
+  "annotation_count": 71,
+  "class_count": 25,
+  "notes": [
+    "For inference smoke tests and teaching, not a training or statistically reliable benchmark set.",
+    "Images retain individual COCO/Flickr licenses. Annotation JSON preserves license and original URLs."
+  ]
+}

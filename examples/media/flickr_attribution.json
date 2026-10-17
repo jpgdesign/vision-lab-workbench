@@ -1,0 +1,219 @@
+{
+  "retrieved_at": "2026-10-17T20:18:29.350635+00:00",
+  "method": "Follow Flickr photo.gne?id redirect, then public Flickr oEmbed JSON for canonical photo page; no API key used. Current metadata supplements, not replaces, COCO original license metadata.",
+  "images": [
+    {
+      "coco_image_id": 25424,
+      "file_name": "000000025424.jpg",
+      "flickr_photo_id": "3659789530",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-nc/2.0/",
+        "id": 2,
+        "name": "Attribution-NonCommercial License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/kulor/3659789530/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fkulor%2F3659789530%2F",
+      "title": "Igor Andreev",
+      "author_name": "James Broad",
+      "author_url": "https://www.flickr.com/photos/kulor/",
+      "web_page": "https://www.flickr.com/photos/kulor/3659789530/",
+      "license": "CC BY-NC 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc/2.0/",
+      "license_id": "2",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 118594,
+      "file_name": "000000118594.jpg",
+      "flickr_photo_id": "7766356622",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-nc/2.0/",
+        "id": 2,
+        "name": "Attribution-NonCommercial License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/pixel97/7766356622/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fpixel97%2F7766356622%2F",
+      "title": "IMG_7233toPost",
+      "author_name": "Melinda VanLone",
+      "author_url": "https://www.flickr.com/photos/pixel97/",
+      "web_page": "https://www.flickr.com/photos/pixel97/7766356622/",
+      "license": "CC BY-NC 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc/2.0/",
+      "license_id": "2",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 173008,
+      "file_name": "000000173008.jpg",
+      "flickr_photo_id": "1157171906",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      "status": "unverified",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos///",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2F%2F%2F",
+      "error": "HTTPError: 404 Client Error: Not Found for url: https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2F%2F%2F"
+    },
+    {
+      "coco_image_id": 265816,
+      "file_name": "000000265816.jpg",
+      "flickr_photo_id": "8763417766",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+        "id": 3,
+        "name": "Attribution-NonCommercial-NoDerivs License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/meequalthecurve/8763417766/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fmeequalthecurve%2F8763417766%2F",
+      "title": "Fort Santiago",
+      "author_name": "siska maria eviline",
+      "author_url": "https://www.flickr.com/photos/meequalthecurve/",
+      "web_page": "https://www.flickr.com/photos/meequalthecurve/8763417766/",
+      "license": "CC BY-NC-ND 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-nd/2.0/",
+      "license_id": "3",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 415727,
+      "file_name": "000000415727.jpg",
+      "flickr_photo_id": "7243978106",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/kueckfamily/7243978106/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fkueckfamily%2F7243978106%2F",
+      "title": "bat_selection",
+      "author_name": "Dan RK",
+      "author_url": "https://www.flickr.com/photos/kueckfamily/",
+      "web_page": "https://www.flickr.com/photos/kueckfamily/7243978106/",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "license_id": "5",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 459887,
+      "file_name": "000000459887.jpg",
+      "flickr_photo_id": "5606990845",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+        "id": 3,
+        "name": "Attribution-NonCommercial-NoDerivs License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/reid-bee/5606990845/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Freid-bee%2F5606990845%2F",
+      "title": "Freckled Nanners",
+      "author_name": "yummysmellsca",
+      "author_url": "https://www.flickr.com/photos/reid-bee/",
+      "web_page": "https://www.flickr.com/photos/reid-bee/5606990845/",
+      "license": "CC BY-NC-ND 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-nd/2.0/",
+      "license_id": "3",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 493334,
+      "file_name": "000000493334.jpg",
+      "flickr_photo_id": "94672746",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-nc-sa/2.0/",
+        "id": 1,
+        "name": "Attribution-NonCommercial-ShareAlike License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/jeffreyputman/94672746/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fjeffreyputman%2F94672746%2F",
+      "title": "Birthday Cake",
+      "author_name": "JeffreyPutman",
+      "author_url": "https://www.flickr.com/photos/jeffreyputman/",
+      "web_page": "https://www.flickr.com/photos/jeffreyputman/94672746/",
+      "license": "CC BY-NC-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-sa/2.0/",
+      "license_id": "1",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 495146,
+      "file_name": "000000495146.jpg",
+      "flickr_photo_id": "9211776644",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by/2.0/",
+        "id": 4,
+        "name": "Attribution License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/ell-r-brown/9211776644/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fell-r-brown%2F9211776644%2F",
+      "title": "South West Trains - Lymington Harbour - Class 450",
+      "author_name": "ell brown",
+      "author_url": "https://www.flickr.com/photos/ell-r-brown/",
+      "web_page": "https://www.flickr.com/photos/ell-r-brown/9211776644/",
+      "license": "CC BY-NC-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-sa/2.0/",
+      "license_id": "1",
+      "license_matches_coco": false
+    },
+    {
+      "coco_image_id": 503755,
+      "file_name": "000000503755.jpg",
+      "flickr_photo_id": "4286031910",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by-sa/2.0/",
+        "id": 5,
+        "name": "Attribution-ShareAlike License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/naparazzi/4286031910/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fnaparazzi%2F4286031910%2F",
+      "title": "ABIGAIL SPEARS",
+      "author_name": "NAPARAZZI",
+      "author_url": "https://www.flickr.com/photos/naparazzi/",
+      "web_page": "https://www.flickr.com/photos/naparazzi/4286031910/",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "license_id": "5",
+      "license_matches_coco": true
+    },
+    {
+      "coco_image_id": 527695,
+      "file_name": "000000527695.jpg",
+      "flickr_photo_id": "7871176758",
+      "coco_recorded_license": {
+        "url": "http://creativecommons.org/licenses/by/2.0/",
+        "id": 4,
+        "name": "Attribution License"
+      },
+      "status": "verified_public_oembed",
+      "page_status": 200,
+      "resolved_page_url": "https://www.flickr.com/photos/stone-soup/7871176758/",
+      "oembed_url": "https://www.flickr.com/services/oembed/?format=json&url=https%3A%2F%2Fwww.flickr.com%2Fphotos%2Fstone-soup%2F7871176758%2F",
+      "title": "roast broccoli",
+      "author_name": "jules:stonesoup",
+      "author_url": "https://www.flickr.com/photos/stone-soup/",
+      "web_page": "https://www.flickr.com/photos/stone-soup/7871176758/",
+      "license": "CC BY 2.0",
+      "license_url": "https://creativecommons.org/licenses/by/2.0/",
+      "license_id": "4",
+      "license_matches_coco": true
+    }
+  ]
+}

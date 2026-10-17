@@ -1,0 +1,497 @@
+{
+  "source": "../../media/annotations/instances_val2017_10.json",
+  "annotation_author": "COCO Consortium",
+  "annotation_license": "CC-BY-4.0",
+  "annotation_license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "image_attribution": "../../media/ATTRIBUTION.md",
+  "split_policy": "Sort the sampled image IDs numerically; first 8 train, last 2 val. Not stratified.",
+  "conversion": {
+    "version": 1,
+    "box_input": "COCO pixel xywh",
+    "box_output": "YOLO class_index x_center y_center width height, normalized to image dimensions",
+    "exclude_iscrowd": true,
+    "clip_boxes_to_image": true,
+    "excluded_crowd_boxes_in_this_subset": 0,
+    "clipped_boxes_in_this_subset": 0,
+    "image_bytes_changed": false
+  },
+  "category_mapping": [
+    {
+      "yolo_class_index": 0,
+      "coco_category_id": 1,
+      "name": "person"
+    },
+    {
+      "yolo_class_index": 1,
+      "coco_category_id": 2,
+      "name": "bicycle"
+    },
+    {
+      "yolo_class_index": 2,
+      "coco_category_id": 3,
+      "name": "car"
+    },
+    {
+      "yolo_class_index": 3,
+      "coco_category_id": 4,
+      "name": "motorcycle"
+    },
+    {
+      "yolo_class_index": 4,
+      "coco_category_id": 5,
+      "name": "airplane"
+    },
+    {
+      "yolo_class_index": 5,
+      "coco_category_id": 6,
+      "name": "bus"
+    },
+    {
+      "yolo_class_index": 6,
+      "coco_category_id": 7,
+      "name": "train"
+    },
+    {
+      "yolo_class_index": 7,
+      "coco_category_id": 8,
+      "name": "truck"
+    },
+    {
+      "yolo_class_index": 8,
+      "coco_category_id": 9,
+      "name": "boat"
+    },
+    {
+      "yolo_class_index": 9,
+      "coco_category_id": 10,
+      "name": "traffic light"
+    },
+    {
+      "yolo_class_index": 10,
+      "coco_category_id": 11,
+      "name": "fire hydrant"
+    },
+    {
+      "yolo_class_index": 11,
+      "coco_category_id": 13,
+      "name": "stop sign"
+    },
+    {
+      "yolo_class_index": 12,
+      "coco_category_id": 14,
+      "name": "parking meter"
+    },
+    {
+      "yolo_class_index": 13,
+      "coco_category_id": 15,
+      "name": "bench"
+    },
+    {
+      "yolo_class_index": 14,
+      "coco_category_id": 16,
+      "name": "bird"
+    },
+    {
+      "yolo_class_index": 15,
+      "coco_category_id": 17,
+      "name": "cat"
+    },
+    {
+      "yolo_class_index": 16,
+      "coco_category_id": 18,
+      "name": "dog"
+    },
+    {
+      "yolo_class_index": 17,
+      "coco_category_id": 19,
+      "name": "horse"
+    },
+    {
+      "yolo_class_index": 18,
+      "coco_category_id": 20,
+      "name": "sheep"
+    },
+    {
+      "yolo_class_index": 19,
+      "coco_category_id": 21,
+      "name": "cow"
+    },
+    {
+      "yolo_class_index": 20,
+      "coco_category_id": 22,
+      "name": "elephant"
+    },
+    {
+      "yolo_class_index": 21,
+      "coco_category_id": 23,
+      "name": "bear"
+    },
+    {
+      "yolo_class_index": 22,
+      "coco_category_id": 24,
+      "name": "zebra"
+    },
+    {
+      "yolo_class_index": 23,
+      "coco_category_id": 25,
+      "name": "giraffe"
+    },
+    {
+      "yolo_class_index": 24,
+      "coco_category_id": 27,
+      "name": "backpack"
+    },
+    {
+      "yolo_class_index": 25,
+      "coco_category_id": 28,
+      "name": "umbrella"
+    },
+    {
+      "yolo_class_index": 26,
+      "coco_category_id": 31,
+      "name": "handbag"
+    },
+    {
+      "yolo_class_index": 27,
+      "coco_category_id": 32,
+      "name": "tie"
+    },
+    {
+      "yolo_class_index": 28,
+      "coco_category_id": 33,
+      "name": "suitcase"
+    },
+    {
+      "yolo_class_index": 29,
+      "coco_category_id": 34,
+      "name": "frisbee"
+    },
+    {
+      "yolo_class_index": 30,
+      "coco_category_id": 35,
+      "name": "skis"
+    },
+    {
+      "yolo_class_index": 31,
+      "coco_category_id": 36,
+      "name": "snowboard"
+    },
+    {
+      "yolo_class_index": 32,
+      "coco_category_id": 37,
+      "name": "sports ball"
+    },
+    {
+      "yolo_class_index": 33,
+      "coco_category_id": 38,
+      "name": "kite"
+    },
+    {
+      "yolo_class_index": 34,
+      "coco_category_id": 39,
+      "name": "baseball bat"
+    },
+    {
+      "yolo_class_index": 35,
+      "coco_category_id": 40,
+      "name": "baseball glove"
+    },
+    {
+      "yolo_class_index": 36,
+      "coco_category_id": 41,
+      "name": "skateboard"
+    },
+    {
+      "yolo_class_index": 37,
+      "coco_category_id": 42,
+      "name": "surfboard"
+    },
+    {
+      "yolo_class_index": 38,
+      "coco_category_id": 43,
+      "name": "tennis racket"
+    },
+    {
+      "yolo_class_index": 39,
+      "coco_category_id": 44,
+      "name": "bottle"
+    },
+    {
+      "yolo_class_index": 40,
+      "coco_category_id": 46,
+      "name": "wine glass"
+    },
+    {
+      "yolo_class_index": 41,
+      "coco_category_id": 47,
+      "name": "cup"
+    },
+    {
+      "yolo_class_index": 42,
+      "coco_category_id": 48,
+      "name": "fork"
+    },
+    {
+      "yolo_class_index": 43,
+      "coco_category_id": 49,
+      "name": "knife"
+    },
+    {
+      "yolo_class_index": 44,
+      "coco_category_id": 50,
+      "name": "spoon"
+    },
+    {
+      "yolo_class_index": 45,
+      "coco_category_id": 51,
+      "name": "bowl"
+    },
+    {
+      "yolo_class_index": 46,
+      "coco_category_id": 52,
+      "name": "banana"
+    },
+    {
+      "yolo_class_index": 47,
+      "coco_category_id": 53,
+      "name": "apple"
+    },
+    {
+      "yolo_class_index": 48,
+      "coco_category_id": 54,
+      "name": "sandwich"
+    },
+    {
+      "yolo_class_index": 49,
+      "coco_category_id": 55,
+      "name": "orange"
+    },
+    {
+      "yolo_class_index": 50,
+      "coco_category_id": 56,
+      "name": "broccoli"
+    },
+    {
+      "yolo_class_index": 51,
+      "coco_category_id": 57,
+      "name": "carrot"
+    },
+    {
+      "yolo_class_index": 52,
+      "coco_category_id": 58,
+      "name": "hot dog"
+    },
+    {
+      "yolo_class_index": 53,
+      "coco_category_id": 59,
+      "name": "pizza"
+    },
+    {
+      "yolo_class_index": 54,
+      "coco_category_id": 60,
+      "name": "donut"
+    },
+    {
+      "yolo_class_index": 55,
+      "coco_category_id": 61,
+      "name": "cake"
+    },
+    {
+      "yolo_class_index": 56,
+      "coco_category_id": 62,
+      "name": "chair"
+    },
+    {
+      "yolo_class_index": 57,
+      "coco_category_id": 63,
+      "name": "couch"
+    },
+    {
+      "yolo_class_index": 58,
+      "coco_category_id": 64,
+      "name": "potted plant"
+    },
+    {
+      "yolo_class_index": 59,
+      "coco_category_id": 65,
+      "name": "bed"
+    },
+    {
+      "yolo_class_index": 60,
+      "coco_category_id": 67,
+      "name": "dining table"
+    },
+    {
+      "yolo_class_index": 61,
+      "coco_category_id": 70,
+      "name": "toilet"
+    },
+    {
+      "yolo_class_index": 62,
+      "coco_category_id": 72,
+      "name": "tv"
+    },
+    {
+      "yolo_class_index": 63,
+      "coco_category_id": 73,
+      "name": "laptop"
+    },
+    {
+      "yolo_class_index": 64,
+      "coco_category_id": 74,
+      "name": "mouse"
+    },
+    {
+      "yolo_class_index": 65,
+      "coco_category_id": 75,
+      "name": "remote"
+    },
+    {
+      "yolo_class_index": 66,
+      "coco_category_id": 76,
+      "name": "keyboard"
+    },
+    {
+      "yolo_class_index": 67,
+      "coco_category_id": 77,
+      "name": "cell phone"
+    },
+    {
+      "yolo_class_index": 68,
+      "coco_category_id": 78,
+      "name": "microwave"
+    },
+    {
+      "yolo_class_index": 69,
+      "coco_category_id": 79,
+      "name": "oven"
+    },
+    {
+      "yolo_class_index": 70,
+      "coco_category_id": 80,
+      "name": "toaster"
+    },
+    {
+      "yolo_class_index": 71,
+      "coco_category_id": 81,
+      "name": "sink"
+    },
+    {
+      "yolo_class_index": 72,
+      "coco_category_id": 82,
+      "name": "refrigerator"
+    },
+    {
+      "yolo_class_index": 73,
+      "coco_category_id": 84,
+      "name": "book"
+    },
+    {
+      "yolo_class_index": 74,
+      "coco_category_id": 85,
+      "name": "clock"
+    },
+    {
+      "yolo_class_index": 75,
+      "coco_category_id": 86,
+      "name": "vase"
+    },
+    {
+      "yolo_class_index": 76,
+      "coco_category_id": 87,
+      "name": "scissors"
+    },
+    {
+      "yolo_class_index": 77,
+      "coco_category_id": 88,
+      "name": "teddy bear"
+    },
+    {
+      "yolo_class_index": 78,
+      "coco_category_id": 89,
+      "name": "hair drier"
+    },
+    {
+      "yolo_class_index": 79,
+      "coco_category_id": 90,
+      "name": "toothbrush"
+    }
+  ],
+  "splits": {
+    "train": [
+      {
+        "coco_image_id": 25424,
+        "file_name": "000000025424.jpg",
+        "image_sha256": "89e8025ecb6f48125ac826dd5fe51409deae64e98133472adbe6ae62b6a61705",
+        "label_sha256": "f6ebf1054f64e2173d12144baf4bfea80c43b26eca60c1928d752f262703da1f",
+        "boxes": 3
+      },
+      {
+        "coco_image_id": 118594,
+        "file_name": "000000118594.jpg",
+        "image_sha256": "422552f71b460a7db60633b4037d9a3b97bf7a2c4eb4c91e4fb6b466b0619da0",
+        "label_sha256": "b9ca5d32ed7587d0b98b2142fadda475093016e8fc1950ab6c7e896068704c9c",
+        "boxes": 2
+      },
+      {
+        "coco_image_id": 173008,
+        "file_name": "000000173008.jpg",
+        "image_sha256": "57e4391ce5b3b06e3b778342e9c4272a9a4a93e9fbb8ab8270f4d0c4dfd3e5c5",
+        "label_sha256": "7c71c8db710f341480009910568041e25940362e14b94cecb8f406c38a02b044",
+        "boxes": 18
+      },
+      {
+        "coco_image_id": 265816,
+        "file_name": "000000265816.jpg",
+        "image_sha256": "a32a1609153269b5936d90d3c782a9bd9ce435c528ac14892f5f86c80e4a0af0",
+        "label_sha256": "11fb9281a08ea17d134449850515f3c5fd180943bfb102762098d8a07d9ffb59",
+        "boxes": 5
+      },
+      {
+        "coco_image_id": 415727,
+        "file_name": "000000415727.jpg",
+        "image_sha256": "9160e969a838a9f2005aac2db2c3e0677879daea9dcacecc96aad010b0d6a42c",
+        "label_sha256": "b8b44b77d9680294cce5ffcc5cb9a22afae4237f06acd83366ae8b2262b34ea3",
+        "boxes": 11
+      },
+      {
+        "coco_image_id": 459887,
+        "file_name": "000000459887.jpg",
+        "image_sha256": "91d4f983a969c27401423dcf207ce6982ddee5dd93a11a81f15b535c6508914f",
+        "label_sha256": "8c756ac44b1d23c367ebef9ce3c10c7fa2e8fa257b6ddbb475b1625e00c7ecaa",
+        "boxes": 3
+      },
+      {
+        "coco_image_id": 493334,
+        "file_name": "000000493334.jpg",
+        "image_sha256": "06be922134b4177ddea7373a1c92c3236d12e290a9b43c9dfbc018c36fa235f6",
+        "label_sha256": "cee3dcae1b554ff405fad49dbf98195e6b504bfeb8d6e432c58afe3f206a931d",
+        "boxes": 2
+      },
+      {
+        "coco_image_id": 495146,
+        "file_name": "000000495146.jpg",
+        "image_sha256": "cc4814681163a70e29c6aa2bb463b4d6a3c52a3c23f77b38357498c5ffee2d38",
+        "label_sha256": "c7af11cce4efb6f784b7f4244a73e0fb2d2d16bc707f47d245842c3b9342ff27",
+        "boxes": 16
+      }
+    ],
+    "val": [
+      {
+        "coco_image_id": 503755,
+        "file_name": "000000503755.jpg",
+        "image_sha256": "ebf2bba226a7df755a310889557d08caa0295eceae0e52f60318b1ec5abeef60",
+        "label_sha256": "a1ff12b91734cd854a9b0fb3b49c8b558e1094dde52fb06d75180a88c6f4e41d",
+        "boxes": 2
+      },
+      {
+        "coco_image_id": 527695,
+        "file_name": "000000527695.jpg",
+        "image_sha256": "c3e455cd18621ea344f3f54f089ba29e7b31c8fdc16c768156eb17c23961f0e3",
+        "label_sha256": "4f539c2e0b749e133ce472db176ea151e87d30aed7e2395864a61a4c59db7b14",
+        "boxes": 9
+      }
+    ]
+  },
+  "purpose": "Pipeline demonstration only; not an evaluation benchmark."
+}

@@ -25,4 +25,12 @@ The Python and npm package managers install the dependencies declared in the req
 | React Flow / XYFlow | [MIT](https://github.com/xyflow/xyflow/blob/main/LICENSE) |
 | Lucide icons | [ISC](https://github.com/lucide-icons/lucide/blob/main/LICENSE) |
 
-No pretrained weight files, privately trained checkpoints, personal consent records, or dataset images/videos are part of the source release. Obtain those separately under the respective upstream conditions.
+## Bundled teaching media and annotations
+
+The reviewed collection under `examples/` is included in the source release. See [per-file attribution and licenses](examples/media/ATTRIBUTION.md), [the source manifest](examples/media/manifest.json), and [the fine-tuning conversion record](examples/finetuning/coco10_yolo/provenance.json).
+
+- Ten unmodified COCO val2017 images, also copied unchanged into the train/validation layout, retain their individual Creative Commons licenses. Some include NonCommercial, NoDerivatives and/or ShareAlike conditions. They are not relicensed under AGPL.
+- COCO annotations/captions and converted YOLO labels are attributed to the COCO Consortium under CC BY 4.0. Subsetting and format conversion are documented.
+- `freezy_traffic.webm` is **Freezy Traffic** by **LIFEOFVIDS**, distributed unchanged under **CC BY 3.0**, with source and license-review links in `examples/media/video/source.json`.
+
+No pretrained weight files, privately trained checkpoints, personal consent records, private datasets, or other locally added media are part of the source release. Obtain model weights separately under the respective upstream conditions.

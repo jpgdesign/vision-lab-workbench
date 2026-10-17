@@ -51,6 +51,94 @@ def upload_image(client):
     return result.json()
 
 
+def test_default_samples_prefer_bundled_media_and_show_ten_images_one_video(tmp_path, monkeypatch):
+    monkeypatch.setenv("VISION_WORKBENCH_RUNTIME", str(tmp_path / "module-runtime"))
+    module = importlib.import_module("backend.app")
+    app_root = tmp_path / "clone"
+    bundled = app_root / "examples/media"
+    (bundled / "images").mkdir(parents=True)
+    (bundled / "video").mkdir()
+    for index in range(10):
+        Image.new("RGB", (16, 12), "blue").save(bundled / "images" / f"coco-{index:02d}.jpg")
+    video = bundled / "video" / "teaching.mp4"
+    video.write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 24)
+    # Generated overview images and metadata are not inputs.
+    Image.new("RGB", (16, 12)).save(bundled / "contact_sheet.jpg")
+    legacy = tmp_path / "vision_training_starter"
+    (legacy / "images").mkdir(parents=True)
+    Image.new("RGB", (8, 8)).save(legacy / "images" / "legacy.jpg")
+    monkeypatch.setattr(module, "APP_ROOT", app_root)
+    monkeypatch.setattr(module, "DEFAULT_SAMPLE_ROOT", legacy)
+    application = module.create_app(tmp_path / "runtime", start_worker=False)
+    with TestClient(application, base_url="http://127.0.0.1") as client:
+        items = client.get("/api/media").json()["media"]
+        assert len(items) == 11
+        assert sum(item["kind"] == "image" for item in items) == 10
+        assert sum(item["kind"] == "video" for item in items) == 1
+        assert all(item["source"] == "sample" for item in items)
+        assert "legacy.jpg" not in {item["name"] for item in items}
+        listed_video = next(item for item in items if item["kind"] == "video")
+        assert client.get(listed_video["url"]).content == video.read_bytes()
+        assert not list((application.state.runtime / "media").iterdir())
+        assert client.get("/api/jobs").json()["jobs"] == []
+    assert video.exists() and (legacy / "images/legacy.jpg").exists()
+
+
+def test_default_samples_fall_back_to_legacy_and_explicit_root_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("VISION_WORKBENCH_RUNTIME", str(tmp_path / "module-runtime"))
+    module = importlib.import_module("backend.app")
+    monkeypatch.setattr(module, "APP_ROOT", tmp_path / "clone")
+    legacy = tmp_path / "vision_training_starter"
+    custom = tmp_path / "custom"
+    for root, name in ((legacy, "legacy.jpg"), (custom, "custom.jpg")):
+        (root / "images").mkdir(parents=True)
+        Image.new("RGB", (8, 8)).save(root / "images" / name)
+    monkeypatch.setattr(module, "DEFAULT_SAMPLE_ROOT", legacy)
+    for runtime, source, expected in (("legacy-runtime", None, "legacy.jpg"), ("custom-runtime", custom, "custom.jpg")):
+        application = module.create_app(tmp_path / runtime, source, start_worker=False)
+        with TestClient(application, base_url="http://127.0.0.1") as client:
+            assert [item["name"] for item in client.get("/api/media").json()["media"]] == [expected]
+
+
+def test_bundled_dataset_template_requires_explicit_validation_and_never_trains(tmp_path, monkeypatch):
+    from test_datasets import yolo
+    monkeypatch.setenv("VISION_WORKBENCH_RUNTIME", str(tmp_path / "module-runtime"))
+    module = importlib.import_module("backend.app")
+    app_root = tmp_path / "clone"
+    template_dir = app_root / "examples/finetuning/coco10_yolo"
+    config = yolo(template_dir)
+    config.rename(template_dir / "dataset.yaml")
+    before = {str(path.relative_to(app_root)): path.read_bytes() for path in app_root.rglob("*") if path.is_file()}
+    monkeypatch.setattr(module, "APP_ROOT", app_root)
+    application = module.create_app(tmp_path / "runtime", tmp_path / "no-samples", start_worker=False)
+    with TestClient(application, base_url="http://127.0.0.1") as client:
+        template = client.get("/api/examples").json()["datasets"][0]
+        assert template["id"] == "coco10_yolo" and template["format"] == "yolo_detection"
+        assert template["available"] is True and Path(template["path"]).is_absolute()
+        assert client.get("/api/datasets").json()["datasets"] == []
+        result = client.post("/api/datasets/validate", json={key: template[key] for key in ("name", "path", "format")})
+        assert result.status_code == 200, result.text
+        assert result.json()["valid"] is True
+        assert result.json()["dataset"]["name"] == template["name"]
+        assert result.json()["dataset"]["train_count"] == 1
+        assert result.json()["dataset"]["val_count"] == 1
+        assert len(client.get("/api/datasets").json()["datasets"]) == 1
+        assert client.get("/api/jobs").json()["jobs"] == []
+    after = {str(path.relative_to(app_root)): path.read_bytes() for path in app_root.rglob("*") if path.is_file()}
+    assert before == after
+
+
+def test_missing_bundled_dataset_is_not_advertised_as_available(tmp_path, monkeypatch):
+    monkeypatch.setenv("VISION_WORKBENCH_RUNTIME", str(tmp_path / "module-runtime"))
+    module = importlib.import_module("backend.app")
+    monkeypatch.setattr(module, "APP_ROOT", tmp_path / "empty-clone")
+    application = module.create_app(tmp_path / "runtime", tmp_path / "no-samples", start_worker=False)
+    with TestClient(application, base_url="http://127.0.0.1") as client:
+        template = client.get("/api/examples").json()["datasets"][0]
+        assert template["available"] is False
+        assert client.get("/api/datasets").json()["datasets"] == []
+
+
 def test_upload_registered_media_and_traversal(api):
     client, app = api
     media = upload_image(client)

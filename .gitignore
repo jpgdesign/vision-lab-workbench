@@ -9,6 +9,7 @@ datasets/
 model_weights/
 action_model_weights/
 .cache/
+*.cache
 screenshots/
 *_validation*.json
 validation_report.json
@@ -25,7 +26,8 @@ frontend/dist/
 .env.*
 !.env.example
 
-# Model weights, datasets, credentials and experiment output stay local.
+# Model weights, private datasets, credentials and experiment output stay local.
+# The reviewed teaching collection under examples/ is intentionally tracked.
 models/*
 !models/README.md
 *.pt
@@ -40,5 +42,7 @@ models/*
 *.mov
 *.avi
 *.mkv
+*.webm
+!examples/media/video/freezy_traffic.webm
 .DS_Store
 Thumbs.db
