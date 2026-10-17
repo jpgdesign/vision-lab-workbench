@@ -6,6 +6,8 @@ A local visual workbench for comparing computer-vision models, running live-came
 
 Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時影像比較，以及資料集驗證、訓練監控與微調權重回測。運算在本機執行，服務預設只監聽 `127.0.0.1`。
 
+[安裝與啟動](#安裝與啟動) · [預設模型下載](#預設模型下載) · [支援的模型與微調](#目前支援的模型與微調) · [教學素材](examples/README.md)
+
 ## 功能
 
 - 圖片／影片推論畫布：新增區塊、拖曳排列、調整參數、比較預訓練與微調權重。
@@ -86,6 +88,84 @@ python setup.py --install --profile base
 RF-DETR 2XL 的 `rfdetr-plus` 為額外選配，不包含在預設安裝中。具備原模型所需使用權限後再使用安裝工具的 `--with-rfdetr-plus` 選項。工作台只記住使用者的確認；模型權利仍依原提供者條款。
 
 首次安裝會下載程式依賴；**模型權重另外準備**，安裝器不會擅自下載數十 GB 權重。完整安裝參數請執行 `python setup.py --help`。
+
+## 預設模型下載
+
+以下為本工作台使用的**確切版本**。點選單檔連結即可下載；Grounding DINO、ViViT 和 DINOv3 需要完整模型目錄，請使用下方的 `hf` 指令。下載位置可自行更改，完成後到「模型與任務」掃描或登錄該檔案／資料夾，無須搬移到專案目錄。
+
+| 預設模型 | 下載大小約值 | 官方來源／下載連結 | 取得方式與備註 |
+|---|---:|---|---|
+| **YOLOv12x** | 119 MB | [官方模型說明](https://docs.ultralytics.com/models/yolo12/) · [下載 yolo12x.pt](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo12x.pt) | 單檔；Ultralytics v8.4.0 發布權重，對應本工作台原版 YOLOv12 接頭 |
+| **YOLO26x** | 119 MB | [官方模型說明](https://docs.ultralytics.com/models/yolo26/) · [下載 yolo26x.pt](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26x.pt) | 單檔；物件偵測版本 |
+| **Grounding DINO Base** | 934 MB | [IDEA-Research 官方模型](https://huggingface.co/IDEA-Research/grounding-dino-base) · [完整檔案列表](https://huggingface.co/IDEA-Research/grounding-dino-base/tree/12bdfa3120f3e7ec7b434d90674b3396eccf88eb) | 使用下方 `hf` 指令，包含 safetensors、config、processor、tokenizer |
+| **RF-DETR 2XL** | 508 MB | [官方專案](https://github.com/roboflow/rf-detr_plus) · [下載 rf-detr-xxlarge.pth](https://repo.roboflow.com/rfdetr/platform-licensed/rf-detr-xxlarge.pth) | 單檔；使用須符合 [PML 1.0](https://github.com/roboflow/rf-detr_plus/blob/main/LICENSE)，並安裝選配 `rfdetr-plus` |
+| **ViViT Base K400** | 356 MB | [Google 官方模型](https://huggingface.co/google/vivit-b-16x2-kinetics400) · [完整檔案列表](https://huggingface.co/google/vivit-b-16x2-kinetics400/tree/8a7171a57f79b9aaa58bc8d977c002a0ea0f0d42) | 使用下方 `hf` 指令；此處為 **Base**，含影片分類權重與設定 |
+| **X3D-L** | 50 MB | [官方 Model Zoo](https://github.com/facebookresearch/pytorchvideo/blob/main/docs/source/model_zoo.md) · [下載 X3D_L.pyth](https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/X3D_L.pyth) | 單檔；Kinetics-400 |
+| **SlowFast R101 8×8** | 504 MB | [官方 Model Zoo](https://github.com/facebookresearch/pytorchvideo/blob/main/docs/source/model_zoo.md) · [下載 SLOWFAST_8x8_R101.pyth](https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/SLOWFAST_8x8_R101.pyth) | 單檔；Kinetics-400 |
+| **VideoMAE V2 Giant K710** | 2.03 GB | [官方 Model Zoo](https://github.com/OpenGVLab/VideoMAEv2/blob/master/docs/MODEL_ZOO.md) · [下載 K710 微調權重](https://huggingface.co/OpenGVLab/VideoMAE2/resolve/706cc172d65ebd4dedbee3f9c0183a93df9fa125/mae-g/vit_g_hybrid_pt_1200e_k710_ft.pth) | 單檔 `vit_g_hybrid_pt_1200e_k710_ft.pth`；此為 K710 分類 checkpoint |
+| **DINOv3 ViT-7B/16 LVD-1689M（選配，尚未啟用）** | **26.86 GB** | [Meta 官方模型／申請存取](https://huggingface.co/facebook/dinov3-vit7b16-pretrain-lvd1689m) | 須獲核准並登入 Hugging Face；6 個權重分片與設定。**工作台目前尚未提供推論或微調接頭** |
+
+大小按十進位 MB／GB 計算，指上列指定權重與必要設定的磁碟下載量，**不是 RAM／VRAM 需求**；不含 Python、PyTorch、CUDA runtime、下載暫存與訓練產物。前八款合計約 **4.62 GB**；加上選配 DINOv3 約 **31.48 GB**。連結與檔案大小於 2026-10-18 核對；權重各自遵循原提供者授權。
+
+<details>
+<summary><strong>複製單檔模型下載指令（YOLO、RF-DETR、X3D、SlowFast、VideoMAE）</strong></summary>
+
+在專案根目錄開啟終端，**只執行所需模型的那一行**。以下適用 Linux／macOS；Windows PowerShell 請將行首 `curl` 改成 `curl.exe`，避免舊版 PowerShell 的同名別名。`--create-dirs` 會建立輸出資料夾；也可把 `models/...` 改成自己的權重存放路徑。
+
+```bash
+# YOLOv12x
+curl --fail --location --retry 3 --create-dirs --output models/yolov12x/yolo12x.pt "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo12x.pt"
+
+# YOLO26x
+curl --fail --location --retry 3 --create-dirs --output models/yolo26x/yolo26x.pt "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26x.pt"
+
+# RF-DETR 2XL：先確認符合原模型的 PML 1.0 使用條款
+curl --fail --location --retry 3 --create-dirs --output models/rf_detr_2xl/rf-detr-xxlarge.pth "https://repo.roboflow.com/rfdetr/platform-licensed/rf-detr-xxlarge.pth"
+
+# X3D-L
+curl --fail --location --retry 3 --create-dirs --output models/x3d_l/X3D_L.pyth "https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/X3D_L.pyth"
+
+# SlowFast R101 8x8
+curl --fail --location --retry 3 --create-dirs --output models/slowfast_r101_8x8/SLOWFAST_8x8_R101.pyth "https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/SLOWFAST_8x8_R101.pyth"
+
+# VideoMAE V2 Giant K710：下載指定的分類 checkpoint
+curl --fail --location --retry 3 --create-dirs --output models/videomaev2_giant_k710/vit_g_hybrid_pt_1200e_k710_ft.pth "https://huggingface.co/OpenGVLab/VideoMAE2/resolve/706cc172d65ebd4dedbee3f9c0183a93df9fa125/mae-g/vit_g_hybrid_pt_1200e_k710_ft.pth"
+```
+
+下載完成後，登錄各行 `--output` 指定的檔案。RF-DETR 2XL 另需安裝 `python setup.py --install --with-rfdetr-plus`；下載成功本身不會授予模型使用權利。
+
+</details>
+
+<details>
+<summary><strong>複製完整模型目錄下載指令（Grounding DINO、ViViT）</strong></summary>
+
+在已安裝工作台的 Python 環境中執行。若找不到 `hf`，Windows 可改用 `.venv\Scripts\hf.exe`，Linux／macOS 可改用 `.venv/bin/hf`。若只安裝了 `base` 環境，先在該環境執行 `python -m pip install "huggingface_hub>=0.34,<1.0"` 安裝下載工具。
+
+```bash
+# Grounding DINO：下載 safetensors 與所有必要設定，不重複下載另一份 .bin 權重
+hf download IDEA-Research/grounding-dino-base --revision 12bdfa3120f3e7ec7b434d90674b3396eccf88eb --include "*.json" "*.txt" "model.safetensors" "README.md" --local-dir models/grounding_dino_base
+
+# ViViT Base K400：權重、模型設定與影像處理器三者缺一不可
+hf download google/vivit-b-16x2-kinetics400 config.json preprocessor_config.json pytorch_model.bin --revision 8a7171a57f79b9aaa58bc8d977c002a0ea0f0d42 --local-dir models/vivit_base_k400
+```
+
+這兩款目前可匿名下載。完成後登錄整個 `models/grounding_dino_base` 或 `models/vivit_base_k400` 資料夾。指令固定為本工作台驗證過的模型 revision。
+
+</details>
+
+<details>
+<summary><strong>DINOv3 7B 選配下載（26.86 GB；工作台接頭尚未啟用）</strong></summary>
+
+先到 [Meta 模型頁](https://huggingface.co/facebook/dinov3-vit7b16-pretrain-lvd1689m) 申請這個 **ViT-7B** repository 的存取權；核准後，在終端使用同一帳號的讀取 token 登入。瀏覽器登入與終端登入分開；能否下載以這個 ViT-7B repository 的實際存取狀態為準。
+
+```bash
+hf auth login
+hf download facebook/dinov3-vit7b16-pretrain-lvd1689m --revision b80367753773648a6793235ab9c65cdbb029506f --include "*.safetensors" "*.json" "LICENSE.md" "README.md" --local-dir models/dinov3_7b
+```
+
+登入指令會互動式詢問 token，無須把 token 寫進指令、README 或 Git。須保留全部 6 個分片、權重索引與設定；下載完成不會讓尚未接入的 DINOv3 推論／微調功能自動啟用。
+
+</details>
 
 ## 登錄與搜尋模型權重
 
