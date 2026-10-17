@@ -124,12 +124,13 @@ def test_execution_refuses_non_virtual_environment(tmp_path):
         setup.execute_plan(plan)
 
 
-def test_preserved_versions_constrain_dependency_install(tmp_path, monkeypatch):
-    python = setup.venv_python(tmp_path)
+@pytest.mark.parametrize("system", ["Windows", "Linux"])
+def test_preserved_versions_constrain_dependency_install(tmp_path, monkeypatch, system):
+    python = setup.venv_python(tmp_path, system)
     python.parent.mkdir(parents=True, exist_ok=True)
     python.touch()
     (tmp_path / "pyvenv.cfg").write_text("home = test")
-    info = hardware(working=True)
+    info = hardware(system=system, working=True)
     plan = setup.build_plan(info, tmp_path, target_exists=True, skip_frontend=True)
     commands = []
     def record(command, **kwargs):
