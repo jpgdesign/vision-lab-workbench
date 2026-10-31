@@ -186,6 +186,37 @@ def test_retention_measures_selected_classes_and_reports_missing_coverage(tmp_pa
     assert evaluation.evaluate("new", lambda _: [])["map50_95"] is None
 
 
+@pytest.mark.parametrize("with_old", [False, True])
+def test_frozen_detection_retention_without_replay_or_with_partial_old_validation(tmp_path, with_old):
+    expansion = spec(["cat", "dog"], ["cat", "dog", "rice"], [0, 1])
+    classes = expansion["classes"]
+    evaluations = {"new": dataset(tmp_path, "new", classes, [2])}
+    if with_old:
+        evaluations["old"] = dataset(tmp_path, "old", classes, [0])
+    request = {"training_mode": "expand_frozen", "class_expansion": expansion,
+               "dataset": {"classes": classes}, "evaluation_datasets": evaluations}
+    evaluation = DetectionRetention(request, tmp_path, {"imgsz": 64})
+    calls = []
+    def before(image):
+        calls.append(image)
+        return [{"class_id": 0, "score": .9, "box": [30, 15, 70, 35]}]
+    evaluation.baseline(before)
+    assert len(calls) == int(with_old)
+    result = evaluation.finish(lambda _: [{"class_id": 2, "score": .9, "box": [30, 15, 70, 35]}])
+    assert result["after"]["new"]["map50_95"] == pytest.approx(1)
+    if with_old:
+        assert result["coverage"]["old"]["missing_classes"] == ["dog"]
+        assert result["delta"]["old"] == pytest.approx(-1)
+    else:
+        assert result["before"]["old"] is result["after"]["old"] is result["delta"]["old"] is None
+        assert result["coverage"]["old"] is None
+        assert any("未量測" in warning for warning in result["warnings"])
+    assert result["training_mode"] == "expand_frozen"
+    if not with_old:
+        with pytest.raises(ValueError, match="old/new"):
+            DetectionRetention({**request, "training_mode": "expand_classes"}, tmp_path, {"imgsz": 64})
+
+
 def test_grounding_retention_uses_normalized_phrase_scores_and_original_image_boxes():
     from transformers import BatchEncoding
     class Model:
@@ -205,7 +236,8 @@ def test_grounding_retention_uses_normalized_phrase_scores_and_original_image_bo
     assert rows[0]["box"] == pytest.approx([30, 15, 70, 35])
 
 
-def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode", ["expand_classes", "expand_frozen"])
+def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch, mode):
     """Actual native trainer + root preparation; all files stay in pytest tmp."""
     import yaml
     from ultralytics.nn.tasks import DetectionModel
@@ -231,6 +263,11 @@ def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch)
         model = DetectionModel(cfg, nc=2, verbose=False)
         model.names = {0: "cat", 1: "dog"}
         model.args = dict(DEFAULT_CFG_DICT)
+        # Production YOLO checkpoints are serialized in FP16. Compare frozen
+        # tensors in that same representation, including all BN buffers.
+        model.half()
+        frozen_before = {name: value.clone() for name, value in model.state_dict().items()
+                         if any(name.startswith(f"model.{i}.") for i in range(3))}
         source = tmp_path / "source"
         source.mkdir()
         torch.save({"model": model, "train_args": dict(DEFAULT_CFG_DICT)}, source / "best.pt")
@@ -251,25 +288,38 @@ def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch)
             return checked["dataset"]
 
         request = {"kind": "training", "model_id": "yolo26x", "checkpoint_path": str(source / "best.pt"),
-                   "training_mode": "expand_classes", "replay_dataset": make_dataset("old", ["dog", "cat"], 0),
+                   "training_mode": mode,
                    "dataset": make_dataset("new", ["rice"], 30),
                    "params": {"epochs": 1, "batch_size": 2, "imgsz": 64, "device": "cpu", "amp": False,
                               "workers": 0, "augmentation": False, "optimizer": "AdamW", "lr": 1e-4,
                               "strategy": "full", "accumulate": 1, "warmup_epochs": 0}}
+        if mode == "expand_classes":
+            request["replay_dataset"] = make_dataset("old", ["dog", "cat"], 0)
         output = tmp_path / "job"
         result = run_training(request, output, lambda _: None)
         assert result["training"]["classes"] == ["cat", "dog", "rice"]
         audit = json.loads((output / "expansion_transfer.json").read_text())
         assert audit["old_rows_verified"] == 2 and len(audit["heads"]) == 6
         retention = result["training"]["retention"]
-        assert retention["before"]["old"]["class_count"] == 2
-        assert retention["after"]["old"]["class_count"] == 2
+        if mode == "expand_classes":
+            assert retention["before"]["old"]["class_count"] == 2
+            assert retention["after"]["old"]["class_count"] == 2
+            assert retention["delta"]["old"] is not None
+        else:
+            assert retention["before"]["old"] is retention["after"]["old"] is retention["delta"]["old"] is None
+            assert len((output / "train_images.txt").read_text().splitlines()) == 2
         assert retention["after"]["new"]["class_count"] == 1
-        assert retention["delta"]["old"] is not None
         restored = torch.load(result["checkpoint_path"], map_location="cpu", weights_only=False)["model"]
         assert restored.names == {0: "cat", 1: "dog", 2: "rice"}
         assert restored.model[-1].nc == 3
+        if mode == "expand_frozen":
+            for name, value in frozen_before.items():
+                assert torch.equal(restored.state_dict()[name], value), name
+            effective = json.loads((output / "effective_training.json").read_text(encoding="utf-8"))
+            assert effective["requested_params"]["strategy"] == "freeze_backbone"
+            assert effective["freeze_layers"] == 3
         metadata = json.loads((output / "workbench_training.json").read_text(encoding="utf-8"))
         assert metadata["class_expansion"]["base_class_ids"] == [0, 1]
+        assert metadata["training_mode"] == mode
     finally:
         torch.set_num_threads(previous_threads)

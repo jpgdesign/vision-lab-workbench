@@ -288,6 +288,9 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     from .detection_expansion import DetectionRetention, expansion_spec, grounding_predictor
 
     p = normalize_training_params(request.get("params"))
+    mode = request.get("training_mode", "standard")
+    if mode == "expand_frozen":
+        p = {**p, "strategy": "freeze_backbone"}
     dataset = _validated_dataset(request, ("yolo_detection", "coco_detection"))
     train_samples, val_samples = _detection_samples(dataset)
     output = Path(output_dir).resolve()
@@ -331,7 +334,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
             module.requires_grad_(False)
     model.to(device)
     if retention:
-        emit({"event": "log", "message": "Grounding DINO 以完整 union 提示詞建立原類別驗證基準；此評估不代表全部開放詞彙。"})
+        emit({"event": "log", "message": "Grounding DINO 以完整 union 提示詞建立原類別驗證基準；此評估不代表全部開放詞彙。" if retention.has_old else "未提供舊驗證集；只評估新增類別，舊開放詞彙能力未量測。"})
         retention.baseline(grounding_predictor(model, processor, caption, retention.settings, device))
     trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
     audit_name, audit_parameter = next((name, parameter) for name, parameter in model.named_parameters()
@@ -349,6 +352,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     val_loader = DataLoader(_DetectionSamples(val_samples, p["imgsz"], False), shuffle=False, **common)
     stopper = EarlyStoppingTracker(p["patience"], "min", "val_loss", emit)
     effective = {"device": str(device), "amp": amp, "amp_dtype": str(amp_dtype) if amp else "float32",
+                 "training_mode": mode,
                  "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits, "params": p,
                  "trainable_parameters": sum(parameter.numel() for parameter in trainable),
                  "total_parameters": sum(parameter.numel() for parameter in model.parameters()),
@@ -362,7 +366,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     _write_json(output / "training_config.json", {"model_id": request["model_id"], "params": p,
                 "dataset_id": dataset.get("id"), "dataset_classes": classes, "schema_version": 1,
                 "caption": caption, "text_tokens": text_tokens, **text_limits,
-                **({"class_expansion": expansion} if expansion else {})})
+                **({"training_mode": mode, "class_expansion": expansion} if expansion else {})})
     _write_json(output / "effective_training.json", effective)
     emit({"event": "log", "message": f"Grounding DINO：{len(classes)} 類、{text_tokens} tokens；"
           f"{effective['trainable_parameters']:,} 個可訓練參數，{device}，AMP={amp}。"})
@@ -382,7 +386,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                     "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits,
                     "params": p, "dataset_id": dataset.get("id"),
                     "inference_input": "image_or_video", "label_format": "zero_based_caption_phrase_index",
-                    **({"training_mode": "expand_classes", "base_classes": expansion["base_classes"],
+                    **({"training_mode": mode, "base_classes": expansion["base_classes"],
                         "class_expansion": expansion, "head_expansion": "open_vocabulary_caption_only"} if expansion else {})})
 
     for epoch in range(1, p["epochs"] + 1):
@@ -464,10 +468,13 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         # Evaluate the chosen best checkpoint, not the final optimizer state.
         load_model(model, str(output / "best" / "model.safetensors"), strict=True, device="cpu")
         retention_result = retention.finish(grounding_predictor(model, processor, caption, retention.settings, device))
-    emit({"event": "progress", "progress": 0.95, "message": "微調完成，正在封裝最佳權重 best.zip"})
-    best_archive = _archive_checkpoint(output / "best")
-    emit({"event": "progress", "progress": 0.98, "message": "正在封裝最後權重 last.zip"})
-    last_archive = _archive_checkpoint(output / "last")
+    if request.get("_skip_checkpoint_archives"):
+        best_archive, last_archive = output / "best", output / "last"
+    else:
+        emit({"event": "progress", "progress": 0.95, "message": "微調完成，正在封裝最佳權重 best.zip"})
+        best_archive = _archive_checkpoint(output / "best")
+        emit({"event": "progress", "progress": 0.98, "message": "正在封裝最後權重 last.zip"})
+        last_archive = _archive_checkpoint(output / "last")
     emit({"event": "progress", "progress": 1.0, "message": "Grounding DINO 微調完成，已保存最佳與最後權重"})
     return {"checkpoint_path": str(best_archive), "artifacts": {"best": str(best_archive), "last": str(last_archive),
             "metrics": str(csv_path), "metrics_json": str(output / "metrics.json"),
@@ -479,4 +486,4 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                          "checkpoint_directory": str(output / "best"), "classes": classes, "caption": caption,
                          "best_epoch": stopper.best_epoch, "early_stopping": stopper.summary(),
                          "parameter_update": update_evidence,
-                         **({"class_expansion": expansion, "retention": retention_result} if expansion else {})}}
+                         **({"training_mode": mode, "class_expansion": expansion, "retention": retention_result} if expansion else {})}}

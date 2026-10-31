@@ -560,7 +560,7 @@ def run_dinov3(request, output, emit, device, *, loaded_model=None):
 
 
 def inference_model_key(request, device):
-    from .inference_cache import model_cache_key
+    from .inference_cache import model_cache_key, ModelCacheKey
     from .model_registry import validate_checkpoint, validate_weight
     model_id = request["model_id"]
     # These checks must run on hits too: cache ownership does not grant a
@@ -570,6 +570,11 @@ def inference_model_key(request, device):
     checkpoint = request.get("checkpoint_path")
     source = validate_checkpoint(model_id, checkpoint) if checkpoint else validate_weight(
         model_id, request.get("model_weight_path") or WEIGHTS[model_id])
+    from .dual_branch import is_bundle, branch_request, MANIFEST
+    if is_bundle(source):
+        key = model_cache_key(model_id, device, source, checkpoint=True, extra_metadata=[Path(source) / MANIFEST])
+        versions = tuple((name, inference_model_key(branch_request(request, source, name), device)) for name in ("original", "new"))
+        return ModelCacheKey(key.identity, key.fingerprint + versions)
     extras = []
     if model_id in {"vivit_base_k400", "x3d_l", "slowfast_r101_8x8"}:
         extras.append(ASSETS / "kinetics400.json")
@@ -608,6 +613,9 @@ def _clear_exception_tensors(error, *, detach=False):
 
 def run_inference(request, output_dir, emit, *, model_cache=None):
     """Run one job, optionally borrowing models from a serial worker's cache."""
+    from .dual_branch import is_bundle, run_inference as run_bundle
+    if is_bundle(request.get("checkpoint_path")):
+        return run_bundle(request, output_dir, emit, model_cache=model_cache)
     from .inference_cache import InferenceModelCache, release_unused_memory
     started = time.perf_counter()
     output = Path(output_dir)

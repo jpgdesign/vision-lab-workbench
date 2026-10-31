@@ -39,3 +39,6 @@
 .checkpoint-directory-note { padding: 12px; margin-top: 12px; border: 1px solid #3a5143; border-radius: 8px; color: #adc7b8; font-size: 12px; line-height: 1.7; }
 .checkpoint-directory-note code { display: block; overflow-wrap: anywhere; font-size: 10px; margin-top: 6px; }
 @media (max-width: 640px) { .coverage-grid { grid-template-columns: 1fr; } .alias-row { grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr) 27px; gap: 4px; } }
+.base-class-names textarea { resize: vertical; width: 100%; min-height: 90px; border: 1px solid #385343; border-radius: 8px; background: #112017; color: #c7dfd0; padding: 11px; font: inherit; line-height: 1.6; }
+.base-class-names > small, .training-strategy-lock { color: #b4cbbd; font-size: 11px; line-height: 1.7; }
+.training-strategy-lock { border-left: 2px solid #91b8a0; padding-left: 10px; }

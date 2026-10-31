@@ -6,3 +6,9 @@
   .canvas-toolbar { flex-wrap: wrap; height: auto; min-height: 57px; padding-top: 10px; padding-bottom: 10px; gap: 8px; }
 }
 .inference-artifacts { padding: 0 16px 8px; margin: 0; flex-shrink: 0; max-height: 60px; overflow: auto; }
+.branch-predictions { display: grid; gap: 10px; margin-top: 10px; }
+.prediction-branch { border-left: 2px solid #a2cbb3; padding-left: 9px; }
+.prediction-branch.new { border-color: #bea7e2; }
+.prediction-branch h4 { margin: 0 0 7px; font-size: 12px; color: #bad9c7; font-weight: 500; }
+.prediction-branch h4 span { color: #89a294; font-size: 10px; font-weight: 400; margin-left: 8px; }
+.prediction-branch p, .branch-score-note { color: #95ac9e; font-size: 11px; line-height: 1.6; margin: 3px 0; }

@@ -88,6 +88,29 @@ def test_training_can_start_from_completed_checkpoint(api, tmp_path):
     assert "checkpoint_path" in saved and "model_weight_path" not in saved
 
 
+@pytest.mark.parametrize("mode", ["expand_frozen", "dual_branch"])
+def test_no_replay_expansion_api_enqueues_with_effective_strategy(api, tmp_path, monkeypatch, mode):
+    from backend import expansion
+    from test_expansion import detection
+    client, app = api
+    module = importlib.import_module("backend.app")
+    from backend.training import normalize_training_params
+    monkeypatch.setattr(module, "validate_job_request", lambda model_id, kind, params: normalize_training_params(model_id, params))
+    monkeypatch.setattr(expansion, "source_classes", lambda _: (["person", "dog"], [0, 1]))
+    dataset = detection(tmp_path / "only_new", ["bento"], 20)
+    loaded = client.post("/api/datasets/validate", json={"path": dataset["path"], "format": "yolo_detection"}).json()["dataset"]
+    payload = {"kind": "training", "model_id": "yolo26x", "dataset_id": loaded["id"], "training_mode": mode,
+               "params": {"strategy": "full"}}
+    result = client.post("/api/training/preview", json=payload)
+    assert result.status_code == 200 and result.json()["valid"], result.text
+    assert not result.json()["plan"]["replay_required"]
+    queued = client.post("/api/jobs", json=payload)
+    assert queued.status_code == 201, queued.text
+    saved = json.loads((app.state.jobs.job_root / queued.json()["id"] / "request.json").read_text(encoding="utf-8"))
+    assert "replay_dataset" not in saved
+    assert saved["params"]["strategy"] == ("freeze_backbone" if mode == "expand_frozen" else "full")
+
+
 def upload_image(client):
     result = client.post("/api/media", files={"file": ("input.png", png(), "image/png")})
     assert result.status_code == 201, result.text

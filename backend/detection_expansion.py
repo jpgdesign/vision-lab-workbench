@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 def expansion_spec(request):
-    if request.get("training_mode", "standard") != "expand_classes":
+    if request.get("training_mode", "standard") not in {"expand_classes", "expand_frozen"}:
         return None
     spec = request.get("class_expansion")
     if not isinstance(spec, dict):
@@ -163,15 +163,19 @@ class DetectionRetention:
     def __init__(self, request, output, params):
         self.spec = expansion_spec(request)
         self.model_id = request.get("model_id")
+        self.mode = request.get("training_mode", "standard")
         self.output = Path(output)
         self.datasets = request.get("evaluation_datasets", {})
-        if self.spec and (not self.datasets.get("old") or not self.datasets.get("new")):
+        self.has_old = bool(self.datasets.get("old"))
+        if self.spec and (not self.datasets.get("new") or (not self.has_old and self.mode != "expand_frozen")):
             raise ValueError("類別擴充必須包含獨立 old/new 驗證資料，不能以訓練資料代替。")
         self.settings = {"imgsz": params["imgsz"], "confidence": 0.001, "nms_iou": 0.7,
                          "max_detections": 100, "iou_thresholds": [round(0.5 + i * 0.05, 2) for i in range(10)]}
         self.before = None
 
     def evaluate(self, split, predict):
+        if split == "old" and not self.has_old:
+            return None
         import numpy as np
         import torch
         from PIL import Image
@@ -258,14 +262,19 @@ class DetectionRetention:
         if self.before is None:
             raise RuntimeError("類別擴充缺少訓練前保留能力基準。")
         after = {split: self.evaluate(split, predict) for split in ("old", "new")}
-        before_score, after_score = self.before["old"]["map50_95"], after["old"]["map50_95"]
+        before_score = self.before["old"]["map50_95"] if self.before["old"] is not None else None
+        after_score = after["old"]["map50_95"] if after["old"] is not None else None
         warnings = [f"{split} 驗證缺少 {len(metrics['missing_classes'])} 類；指標只包含有標註的類別。"
-                    for split, metrics in after.items() if metrics["missing_classes"]]
-        result = {"metric": "map50_95", "before": self.before, "after": after,
+                    for split, metrics in after.items() if metrics is not None and metrics["missing_classes"]]
+        if not self.has_old:
+            warnings.append("未提供舊類別驗證集：舊能力與變化尚未量測，不能宣稱已保留。")
+        if self.mode == "expand_frozen":
+            warnings.append("凍結擴充固定骨幹；分類／定位頭仍會更新，不保證舊任務準確率不下降。")
+        result = {"metric": "map50_95", "training_mode": self.mode, "before": self.before, "after": after,
                   "delta": {"old": None if before_score is None or after_score is None else after_score-before_score},
-                  "scope": "指定 replay/new 驗證集" + ("；僅代表保存的 union caption，非全部開放詞彙。" if self.model_id == "grounding_dino_base" else "。"),
+                  "scope": ("指定 old/new 驗證集" if self.has_old else "僅新驗證集；舊能力未量測") + ("；僅代表保存的 union caption，非全部開放詞彙。" if self.model_id == "grounding_dino_base" else "。"),
                   "warnings": warnings, "settings": self.settings,
-                  "coverage": {split: {key: metrics[key] for key in ("sample_count", "annotation_count", "class_count", "requested_class_count", "missing_classes")}
+                  "coverage": {split: None if metrics is None else {key: metrics[key] for key in ("sample_count", "annotation_count", "class_count", "requested_class_count", "missing_classes")}
                                for split, metrics in after.items()}}
         _write_json(self.output / "retention.json", result)
         return result

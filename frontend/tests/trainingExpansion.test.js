@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canTrainWithWeights, classAliases, freshExpansionPreview, retentionRows, trainingRequest } from '../src/trainingExpansion.js';
-import { checkpointChoices } from '../src/checkpoints.js';
+import { canTrainWithWeights, classAliases, effectiveTrainingParams, freshExpansionPreview, inferenceOnlyCheckpoint, isExpansionMode, requiresReplay, retentionRows, trainingRequest } from '../src/trainingExpansion.js';
+import { canRunWithWeights, checkpointChoices } from '../src/checkpoints.js';
 
 test('standard training cannot accidentally submit stale replay or aliases from expansion', () => {
   const body = trainingRequest({ modelId: 'yolo26x', datasetId: 'new', replayDatasetId: 'old', aliases: { chicken: 'bird' }, params: { lr: 0.001 } });
@@ -57,4 +57,47 @@ test('self-contained directory checkpoint is available in inference choices with
   const jobs = [{ id: 'dino', kind: 'training', model_id: 'dinov3_7b', status: 'completed', created_at: '2026-01-01T00:00:00Z', result: { training: { checkpoint_directory: '/jobs/dino/best', classes: ['a', 'b'] } } }];
   assert.equal(checkpointChoices('dinov3_7b', [], jobs)[0].id, 'job:dino');
   assert.equal(checkpointChoices('dinov3_7b', [], [{ ...jobs[0], status: 'failed' }]).length, 0);
+});
+
+test('all three expansion modes preview, but only replay expansion requires old training data', () => {
+  for (const mode of ['expand_frozen', 'expand_classes', 'dual_branch']) {
+    assert.equal(isExpansionMode(mode), true);
+    const request = trainingRequest({ modelId: 'yolo26x', datasetId: 'new', mode });
+    assert.equal(request.training_mode, mode); assert.equal(request.replay_dataset_id, null);
+    assert.deepEqual(request.class_aliases, {});
+    assert.equal(requiresReplay(mode), mode === 'expand_classes');
+  }
+  assert.equal(isExpansionMode('standard'), false);
+});
+
+test('frozen expansion enforces full backbone freeze or head-only without destroying other modes settings', () => {
+  const detection = { strategy: 'full', freeze: 3, lr: 0.003 };
+  assert.deepEqual(effectiveTrainingParams('expand_frozen', 'detection', detection), { strategy: 'freeze_backbone', freeze: 0, lr: 0.003 });
+  assert.deepEqual(detection, { strategy: 'full', freeze: 3, lr: 0.003 });
+  assert.equal(effectiveTrainingParams('dual_branch', 'detection', detection), detection);
+  assert.deepEqual(effectiveTrainingParams('expand_frozen', 'action', { strategy: 'full' }), { strategy: 'head_only' });
+  assert.deepEqual(effectiveTrainingParams('expand_frozen', 'embedding', { strategy: 'full' }), { strategy: 'head_only' });
+});
+
+test('optional old evaluation and explicit Grounding prompt names remain distinct from dataset classes', () => {
+  const request = trainingRequest({ modelId: 'grounding_dino_base', datasetId: 'new', mode: 'dual_branch', replayDatasetId: 'old-evaluation', baseClassNames: ['person', 'car'] });
+  assert.equal(request.replay_dataset_id, 'old-evaluation');
+  assert.deepEqual(request.base_class_names, ['person', 'car']);
+  assert.equal(Object.hasOwn(trainingRequest({ mode: 'expand_frozen' }), 'base_class_names'), false);
+  assert.equal(Object.hasOwn(trainingRequest({ mode: 'standard', baseClassNames: ['person'] }), 'base_class_names'), false);
+});
+
+test('bundle directory output is selectable for inference but never a new training source', () => {
+  const model = { available: true, environment_available: true, training_supported: true, inference_supported: true };
+  const job = { id: 'bundle', model_id: 'yolo26x', kind: 'training', status: 'completed', created_at: '2026-11-01T00:00:00Z', result: { checkpoint_is_directory: true, training: { checkpoint_format: 'frozen_branch_bundle', classes: ['old', 'new'] } } };
+  const choices = checkpointChoices('yolo26x', [], [job]);
+  assert.equal(choices.length, 1); assert.equal(inferenceOnlyCheckpoint(choices[0]), true);
+  assert.equal(canTrainWithWeights(model, 'job:bundle', choices), false);
+  assert.equal(canRunWithWeights(model, { checkpointId: 'job:bundle' }, choices), true);
+});
+
+test('missing old evaluation never becomes a measured zero or fabricated delta', () => {
+  const rows = retentionRows({ metric: 'accuracy', before: { old: null }, after: { old: null, new: { accuracy: 0 } }, delta: { old: 0 } });
+  assert.equal(rows[0].before, null); assert.equal(rows[0].after, null); assert.equal(rows[0].delta, null);
+  assert.equal(rows[1].after, 0);
 });

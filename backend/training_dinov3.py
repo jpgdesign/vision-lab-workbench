@@ -188,13 +188,16 @@ def run_training(request, output, emit):
                            _expanded_linear_classifier, EarlyStoppingTracker)
 
     output, p = Path(output), request["params"]
+    mode = request.get("training_mode", "standard")
+    if mode == "expand_frozen":
+        p = {**p, "strategy": "head_only"}
     output.mkdir(parents=True, exist_ok=True)
     dataset = _validated_dataset(request, "imagefolder")
     classes = _classes(dataset["classes"])
     train_samples, val_samples = _samples(dataset, "train"), _samples(dataset, "val")
-    mode = request.get("training_mode", "standard")
-    if mode not in {"standard", "expand_classes"}:
+    if mode not in {"standard", "expand_classes", "expand_frozen"}:
         raise ValueError("未知的 training_mode。")
+    expanding = mode in {"expand_classes", "expand_frozen"}
     device = _resolve_device(p["device"])
     random.seed(p["seed"])
     np.random.seed(p["seed"])
@@ -205,7 +208,7 @@ def run_training(request, output, emit):
         model, processor, source = load_classifier(checkpoint)
         base_classes = source["classes"]
     else:
-        if mode == "expand_classes":
+        if expanding:
             raise ValueError("原始 DINOv3 沒有分類類別；擴充類別必須選擇已訓練的 DINOv3 分類 checkpoint。")
         weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
         folder = weight if weight.is_dir() else weight.parent
@@ -213,7 +216,7 @@ def run_training(request, output, emit):
         processor = AutoImageProcessor.from_pretrained(str(folder), local_files_only=True)
         base_classes = []
     expansion = request.get("class_expansion", {})
-    if mode == "expand_classes":
+    if expanding:
         if expansion.get("base_classes") != base_classes or expansion.get("classes") != classes:
             raise ValueError("DINOv3 類別擴充對應與來源 checkpoint 不一致。")
         old_ids = [classes.index(name) for name in base_classes if name in classes]
@@ -244,14 +247,16 @@ def run_training(request, output, emit):
                           shuffle=training, generator=torch.Generator().manual_seed(p["seed"]), **common)
     train_loader, val_loader = loader(train_samples, True), loader(val_samples)
     retention, evaluation_loaders = None, {}
-    if mode == "expand_classes":
+    if expanding:
         for name in ("old", "new"):
             evaluation = request.get("evaluation_datasets", {}).get(name)
+            if name == "old" and evaluation is None and mode == "expand_frozen":
+                continue
             if not isinstance(evaluation, dict) or evaluation.get("classes") != classes:
                 raise ValueError("DINOv3 類別擴充需要以聯集標籤對應的 old/new 驗證集。")
             evaluation_loaders[name] = loader(_samples(evaluation, "val"))
         old_ids = [classes.index(name) for name in base_classes]
-        before = _evaluate(model, evaluation_loaders["old"], classes, p, device, old_ids)
+        before = _evaluate(model, evaluation_loaders["old"], classes, p, device, old_ids) if "old" in evaluation_loaders else None
         retention = {"metric": "accuracy", "before": {"old": before}, "after": {}, "delta": {},
                      "classes": classes, "base_classes": base_classes, "training_mode": mode,
                      "scope": "fixed old/new validation; source old head versus best union head; identical processor and FP32 evaluation",
@@ -266,6 +271,12 @@ def run_training(request, output, emit):
                 retention["warnings"].append(f"{name} 驗證集缺少 {len(missing)} 類，評估不代表未出現的類別。")
             if name == "new" and observed.intersection(old_ids):
                 retention["warnings"].append("new accuracy 代表新資料集（含原有重疊類別），不是僅新增類別的 accuracy。")
+        if "old" not in evaluation_loaders:
+            retention["coverage"]["old"] = None
+            retention["warnings"].append("未提供舊類別驗證集：舊能力與變化尚未量測，不能宣稱已保留。")
+            retention["scope"] = "new held-out validation only; old-task retention is unmeasured"
+        if mode == "expand_frozen":
+            retention["warnings"].append("凍結擴充固定特徵骨幹；分類頭仍會更新，不保證舊類別準確率不下降。")
         _write_json(output / "retention.json", retention)
     effective = {"device": str(device), "amp": amp, "classes": classes, "params": p,
                  "training_mode": mode, "base_classes": base_classes, "pooling": "cls",
@@ -294,7 +305,7 @@ def run_training(request, output, emit):
                     "pooling": "cls", "checkpoint_format": CHECKPOINT_FORMAT})
         _write_json(destination / "workbench_training.json", {"model_id": request["model_id"], "epoch": epoch,
                     "classes": classes, "base_classes": base_classes, "training_mode": mode,
-                    "class_expansion": expansion if mode == "expand_classes" else None,
+                    "class_expansion": expansion if expanding else None,
                     "checkpoint_format": CHECKPOINT_FORMAT, "params": p, "dataset_id": dataset.get("id"),
                     "inference_input": "image", "video_mode": "independent_frames"})
 
@@ -353,9 +364,11 @@ def run_training(request, output, emit):
         # Release optimizer/last model before loading the selected best full model.
         del optimizer, scheduler, trainable, model, logits, loss
         model, _, _ = load_classifier(output / "best", device)
+        retention["after"]["old"] = None
         for name, evaluation_loader in evaluation_loaders.items():
             retention["after"][name] = _evaluate(model, evaluation_loader, classes, p, device)
-        retention["delta"]["old"] = retention["after"]["old"]["accuracy"] - retention["before"]["old"]["accuracy"]
+        retention["delta"]["old"] = (retention["after"]["old"]["accuracy"] - retention["before"]["old"]["accuracy"]
+                                      if retention["before"]["old"] is not None else None)
         retention["best_epoch"] = stopper.best_epoch
         _write_json(output / "retention.json", retention)
         _write_json(output / "best" / "retention.json", retention)
@@ -365,6 +378,7 @@ def run_training(request, output, emit):
     effective["early_stopping"] = stopper.summary()
     _write_json(output / "effective_training.json", effective)
     training = {"model_id": request["model_id"], "checkpoint_format": CHECKPOINT_FORMAT,
+                "training_mode": mode,
                 "checkpoint_directory": str(output / "best"), "classes": classes,
                 "best_epoch": stopper.best_epoch, "early_stopping": stopper.summary()}
     artifacts = {"best": str(output / "best"), "last": str(output / "last"), "metrics": str(csv_path),

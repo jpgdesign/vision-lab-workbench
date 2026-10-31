@@ -119,6 +119,40 @@ def test_unlabelled_backbone_cannot_expand(tmp_path, tiny_backbone):
             "dataset": dataset(tmp_path / "data", ["red", "green"])}, tmp_path / "job", lambda event: None)
 
 
+@pytest.mark.parametrize("old_validation", [False, True])
+def test_frozen_expansion_new_images_only_keeps_entire_dinov3_backbone(tmp_path, tiny_backbone, old_validation):
+    base_classes, classes = ["red", "green"], ["red", "green", "blue"]
+    source = adapter.run_training({"model_id": "dinov3_7b", "params": params(epochs=1),
+        "dataset": dataset(tmp_path / "base_data", base_classes), "model_weight_path": str(tiny_backbone)},
+        tmp_path / "base_job", lambda _: None)
+    original, _, _ = adapter.load_classifier(source["checkpoint_path"])
+    before = {name: tensor.clone() for name, tensor in original.backbone.state_dict().items()}
+    new = dataset(tmp_path / "new", classes, [2])
+    evaluations = {"new": new}
+    if old_validation:
+        evaluations["old"] = dataset(tmp_path / "old_eval", classes, [0])
+    request = {"model_id": "dinov3_7b", "training_mode": "expand_frozen", "checkpoint_path": source["checkpoint_path"],
+               "params": params(epochs=1, strategy="full"), "dataset": new,
+               "class_expansion": {"base_classes": base_classes, "classes": classes, "old_class_ids": [0, 1], "new_class_ids": [2]},
+               "evaluation_datasets": evaluations}
+    result = adapter.run_training(request, tmp_path / "frozen", lambda _: None)
+    restored, _, metadata = adapter.load_classifier(result["checkpoint_path"])
+    for name, tensor in before.items():
+        assert torch.equal(tensor, restored.backbone.state_dict()[name]), name
+    assert metadata["classes"] == classes
+    report = result["training"]["retention"]
+    if old_validation:
+        assert report["coverage"]["old"]["missing_classes"] == ["green"]
+        assert report["before"]["old"]["sample_count"] == 1
+    else:
+        assert report["before"]["old"] is report["after"]["old"] is report["delta"]["old"] is None
+        assert any("未量測" in warning for warning in report["warnings"])
+    assert report["after"]["new"]["sample_count"] == 1
+    effective = json.loads((tmp_path / "frozen" / "effective_training.json").read_text(encoding="utf-8"))
+    assert effective["params"]["strategy"] == "head_only"
+    assert effective["training_mode"] == "expand_frozen"
+
+
 @pytest.mark.parametrize("target_classes,preserved", [(["red", "green"], True), (["green", "red"], False), (["cat", "dog"], False)])
 def test_standard_dinov3_continuation_preserves_only_identical_semantics(tmp_path, tiny_backbone, monkeypatch, target_classes, preserved):
     from backend import training

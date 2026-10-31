@@ -166,6 +166,9 @@ def _action_predict(model, metadata, pixels, params, device):
 
 
 def _load_runner(spec, device):
+    from .dual_branch import is_bundle
+    if is_bundle(spec.get("checkpoint_path")):
+        raise ValueError("雙分支模型目前支援上傳圖片／影片比較；即時攝影機尚未接入雙分支，請選擇單一模型。")
     model_id = spec["model_id"]
     if model_id in DETECTORS:
         return {"task": "detection", "predict": create_detector(model_id, spec["params"], device,

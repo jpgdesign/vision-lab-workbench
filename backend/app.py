@@ -86,9 +86,10 @@ class JobInput(BaseModel):
     dataset_id: str | None = Field(default=None, max_length=100)
     checkpoint_job_id: str | None = Field(default=None, max_length=100)
     checkpoint_id: str | None = Field(default=None, max_length=100)
-    training_mode: Literal["standard", "expand_classes"] = "standard"
+    training_mode: Literal["standard", "expand_frozen", "expand_classes", "dual_branch"] = "standard"
     replay_dataset_id: str | None = Field(default=None, max_length=100)
     class_aliases: dict[str, str] = Field(default_factory=dict, max_length=10000)
+    base_class_names: list[str] = Field(default_factory=list, max_length=1000)
     params: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -486,12 +487,17 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
             raise HTTPException(422, model.get(f"{payload.kind}_reason") or "此模型目前未提供這項功能。")
         try:
             weight_fields = request_weights(payload.model_id, payload.checkpoint_id, payload.checkpoint_job_id)
-            params = normalize_params(payload.model_id, payload.kind, payload.params, allow_missing_weights=has_checkpoint and not model.get("available"))
+            if payload.kind == "training":
+                from .expansion import training_mode_params
+                chosen_params = training_mode_params(payload.model_id, payload.training_mode, payload.params)
+            else:
+                chosen_params = payload.params
+            params = normalize_params(payload.model_id, payload.kind, chosen_params, allow_missing_weights=has_checkpoint and not model.get("available"))
         except (ValueError, TypeError, OSError) as exc:
             raise HTTPException(422, str(exc)) from exc
         request: dict[str, Any] = {"kind": payload.kind, "model_id": payload.model_id, "params": params, **weight_fields}
         if payload.kind == "inference":
-            if payload.training_mode != "standard" or payload.replay_dataset_id or payload.class_aliases:
+            if payload.training_mode != "standard" or payload.replay_dataset_id or payload.class_aliases or payload.base_class_names:
                 raise HTTPException(422, "推論不能指定訓練模式、舊資料集或類別別名。")
             if not payload.media_id or payload.dataset_id:
                 raise HTTPException(422, "推論需要 media_id，且不能同時指定 dataset_id。")
@@ -521,7 +527,7 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
                 dataset["allowed_root"] = str(allowed_root)
             datasets.add(dataset)
             request.update(dataset_id=payload.dataset_id, dataset=dataset, training_mode=payload.training_mode,
-                           class_aliases=payload.class_aliases)
+                           class_aliases=payload.class_aliases, base_class_names=payload.base_class_names)
             if payload.replay_dataset_id:
                 replay = datasets.get(payload.replay_dataset_id)
                 if not replay:

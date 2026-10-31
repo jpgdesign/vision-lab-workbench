@@ -138,6 +138,9 @@ def validate_checkpoint(model_id: str, value) -> Path:
     if model_id not in FILES:
         raise ValueError("此模型尚未提供微調權重接頭。")
     path = _absolute(value)
+    from .dual_branch import is_bundle, validate_bundle
+    if is_bundle(path):
+        return validate_bundle(path, model_id)
     if model_id in {"yolov12x", "yolo26x"}:
         if path.is_dir():
             path = path / "best.pt"
@@ -201,7 +204,8 @@ def checkpoint_metadata(path):
         metadata["retention"] = _json(folder / "retention.json")
     return {"model_id": metadata.get("model_id"), "classes": metadata.get("classes", metadata.get("dataset_classes", [])),
             **{key: metadata[key] for key in ("caption", "checkpoint_format", "base_classes", "training_mode",
-                                             "inference_input", "video_mode", "class_expansion", "retention") if key in metadata}}
+                                             "inference_input", "video_mode", "class_expansion", "retention",
+                                             "score_semantics", "old_branch_unchanged") if key in metadata}}
 
 
 class ModelRegistry:

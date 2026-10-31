@@ -145,6 +145,9 @@ def register_live_routes(application, manager, get_models, validate_job_request,
                 elif selected.checkpoint_job_id:
                     checkpoint = manager.checkpoint_for(selected.checkpoint_job_id, selected.model_id)
                     item.update(checkpoint_job_id=selected.checkpoint_job_id, checkpoint_path=str(checkpoint))
+                from .dual_branch import is_bundle
+                if is_bundle(item.get("checkpoint_path")):
+                    raise ValueError("雙分支模型目前支援上傳圖片／影片比較；即時攝影機尚未接入雙分支，請選擇單一模型。")
             except (ValueError, TypeError, OSError) as exc:
                 raise HTTPException(422, str(exc)) from exc
             models.append(item)

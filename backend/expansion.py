@@ -17,6 +17,17 @@ import sys
 
 COCO_NAMES = "person,bicycle,car,motorcycle,airplane,bus,train,truck,boat,traffic light,fire hydrant,stop sign,parking meter,bench,bird,cat,dog,horse,sheep,cow,elephant,bear,zebra,giraffe,backpack,umbrella,handbag,tie,suitcase,frisbee,skis,snowboard,sports ball,kite,baseball bat,baseball glove,skateboard,surfboard,tennis racket,bottle,wine glass,cup,fork,knife,spoon,bowl,banana,apple,sandwich,orange,broccoli,carrot,hot dog,pizza,donut,cake,chair,couch,potted plant,bed,dining table,toilet,tv,laptop,mouse,remote,keyboard,cell phone,microwave,oven,toaster,sink,refrigerator,book,clock,vase,scissors,teddy bear,hair drier,toothbrush".split(",")
 COCO_IDS = [1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90]
+TRAINING_MODES = ["standard", "expand_frozen", "expand_classes", "dual_branch"]
+
+
+def training_mode_params(model_id, mode, params):
+    """Make frozen-mode semantics identical in UI, API and direct workers."""
+    result = dict(params or {})
+    if mode == "expand_frozen":
+        result["strategy"] = "freeze_backbone" if model_id in {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"} else "head_only"
+        if model_id in {"yolov12x", "yolo26x"}:
+            result["freeze"] = 0  # Native adapter chooses the complete backbone.
+    return result
 
 
 def _names(value):
@@ -49,7 +60,8 @@ def source_classes(request):
         classes = _names(checkpoint_metadata(path)["classes"])
         return classes, list(range(1, len(classes) + 1)) if model_id == "rf_detr_2xl" else list(range(len(classes)))
     if model_id == "grounding_dino_base":
-        classes = _names(request.get("replay_dataset", {}).get("classes"))
+        replay_scope = request.get("replay_dataset", {}).get("classes") if request.get("training_mode", "expand_classes") == "expand_classes" else None
+        classes = _names(request.get("base_class_names") or replay_scope or list(COCO_NAMES))
         return classes, list(range(len(classes)))
     if model_id == "dinov3_7b":
         raise ValueError("原始 DINOv3 是表徵模型，沒有舊分類頭；請先用一般微調建立分類器，再選擇該 checkpoint 擴充。")
@@ -97,19 +109,31 @@ def preview_expansion(request):
     errors, warnings = [], []
     plan = {}
     try:
-        if request.get("training_mode", "standard") == "standard":
-            if request.get("replay_dataset") or request.get("class_aliases"):
+        mode = request.get("training_mode", "standard")
+        if mode not in TRAINING_MODES:
+            raise ValueError("未知的訓練方式。")
+        checkpoint = request.get("checkpoint_path")
+        if checkpoint:
+            folder = Path(checkpoint) if Path(checkpoint).is_dir() else Path(checkpoint).parent
+            if (folder / "branch_bundle.json").is_file():
+                raise ValueError("雙分支模型包目前供推論使用；繼續訓練請選擇原始模型或單一分支 checkpoint，不能將模型包遞迴當作來源。")
+        if request.get("base_class_names"):
+            _names(request["base_class_names"])
+            if request.get("model_id") != "grounding_dino_base" or checkpoint:
+                raise ValueError("舊提示類別只適用於原始 Grounding DINO；已有分類頭的模型會從權重讀取原類別。")
+        if mode == "standard":
+            if request.get("replay_dataset") or request.get("class_aliases") or request.get("base_class_names"):
                 raise ValueError("舊資料重播與類別別名僅可用於類別擴充模式。")
             return {"valid": True, "errors": [], "warnings": ["一般微調使用新資料集的類別輸出，不會自動保留原類別。"], "plan": {}}
         replay, new = request.get("replay_dataset"), request["dataset"]
-        if not replay:
+        if not replay and mode == "expand_classes":
             raise ValueError("類別擴充需要已驗證的舊任務資料集（含獨立 train / val）。")
         detection = new["format"] in {"yolo_detection", "coco_detection"}
-        if (detection and replay["format"] not in {"yolo_detection", "coco_detection"}) or (not detection and replay["format"] != new["format"]):
+        if replay and ((detection and replay["format"] not in {"yolo_detection", "coco_detection"}) or (not detection and replay["format"] != new["format"])):
             raise ValueError("新舊資料集必須是相同任務；偵測可混用 YOLO 與 COCO。")
         base, ids = source_classes(request)
         base = _names(base)
-        old_names, new_names = _names(replay["classes"]), _names(new["classes"])
+        old_names, new_names = _names(replay["classes"]) if replay else [], _names(new["classes"])
         lookup = {name.strip().casefold(): i for i, name in enumerate(base)}
         old_map = []
         for name in old_names:
@@ -127,21 +151,28 @@ def preview_expansion(request):
                 lookup[key] = len(classes)
                 classes.append(target)
             new_map.append(lookup[key])
-        old_samples, new_samples = dataset_samples(replay), dataset_samples(new)
+        old_samples, new_samples = dataset_samples(replay) if replay else {"train": [], "val": []}, dataset_samples(new)
         coverage = {}
         for label, samples, mapping, expected in (("old", old_samples, old_map, base), ("new", new_samples, new_map, [classes[i] for i in new_map])):
             for split in ("train", "val"):
                 coverage[f"{label}_{split}"] = _coverage(samples[split], classes, mapping, expected)
+                coverage[f"{label}_{split}"]["provided"] = label == "new" or bool(replay)
+                coverage[f"{label}_{split}"]["used_for_training"] = split == "train" and (label == "new" or mode == "expand_classes")
         plan = {"base_classes": base, "base_class_ids": ids, "classes": classes,
                 "old_class_ids": list(range(len(base))), "new_class_ids": list(range(len(base), len(classes))),
                 "old_label_map": old_map, "new_label_map": new_map, "coverage": coverage,
-                "class_aliases": aliases, "source_dataset_ids": {"old": replay.get("id"), "new": new.get("id")}}
+                "class_aliases": aliases, "source_dataset_ids": {"old": replay.get("id") if replay else None, "new": new.get("id")},
+                "training_mode": mode, "replay_required": mode == "expand_classes",
+                "uses_old_training_data": mode == "expand_classes", "old_evaluation_available": bool(replay),
+                "effective_params": training_mode_params(request["model_id"], mode, request.get("params")),
+                "preservation": "frozen_original_branch" if mode == "dual_branch" else "replay" if mode == "expand_classes" else "frozen_backbone_only"}
         if len(classes) == len(base):
             errors.append("沒有新增類別；若只訓練原有類別，請使用一般微調。")
-        for part in ("old_train", "old_val"):
+        for part in (("old_train", "old_val") if mode == "expand_classes" else ("old_val",) if replay else ()):
             missing = coverage[part]["missing"]
             if missing:
-                errors.append(f"{part} 缺少 {len(missing)} 個舊類別樣本：" + ", ".join(missing[:12]))
+                message = f"{part} 缺少 {len(missing)} 個舊類別樣本：" + ", ".join(missing[:12])
+                (errors if mode == "expand_classes" else warnings).append(message)
         if coverage["new_train"]["missing"]:
             errors.append("新訓練資料有類別沒有任何標註：" + ", ".join(coverage["new_train"]["missing"][:12]))
         if coverage["new_val"]["missing"]:
@@ -151,7 +182,10 @@ def preview_expansion(request):
         split_keys = {}
         for split in ("train", "val"):
             keys = set()
-            for sample in old_samples[split] + new_samples[split]:
+            # Optional old data are evaluation-only in frozen/dual modes.
+            # Do not reject an unused old train split that overlaps new val.
+            old_used = old_samples[split] if mode == "expand_classes" or split == "val" else []
+            for sample in old_used + new_samples[split]:
                 path = Path(sample["path"]).resolve()
                 keys.add(("path", os.path.normcase(str(path))))
                 if detection or new["format"] == "imagefolder":
@@ -159,8 +193,17 @@ def preview_expansion(request):
             split_keys[split] = keys
         if split_keys["train"] & split_keys["val"]:
             errors.append("新舊資料混合後 train / val 有重複檔案或相同影像內容，會造成驗證洩漏；請重新切分。")
-        warnings.append("保留分類權重與舊資料混合可降低遺忘，但不保證舊任務準確率不下降；請比較訓練前後指標。")
-        if detection:
+        if mode == "expand_classes":
+            warnings.append("保留分類權重與舊資料混合可降低遺忘，但不保證舊任務準確率不下降；請比較訓練前後指標。")
+        elif mode == "expand_frozen":
+            warnings.append("此模式只凍結骨幹並保留原分類權重作為起點；分類頭仍會更新，沒有舊資料時原能力可能退步。")
+        else:
+            warnings.append("此模式保留原模型完整分支，另外訓練新分支。推論分別執行兩個分支，耗時與權重儲存量增加；不做跨分支抑制或共同機率正規化。")
+        if not replay:
+            warnings.append("未提供舊驗證資料：舊任務準確率與訓練前後差異顯示為未測量，不會填入 0 或宣稱準確率不變。")
+        elif mode != "expand_classes":
+            warnings.append("此模式的舊資料只使用 val 切分評估；舊 train 不參與訓練。")
+        if detection and mode != "dual_branch":
             warnings.append("混合訓練影像中出現的舊類別與新類別都應完整標註；漏標物件會被當作背景。")
         if request["model_id"] == "grounding_dino_base":
             warnings.append("Grounding DINO 的舊能力評估僅涵蓋舊資料集提供的文字類別，不能代表所有開放詞彙。")
@@ -232,15 +275,19 @@ def prepare_expansion(request, output, emit):
     checked = preview_expansion(request)
     if not checked["valid"]:
         raise ValueError("類別擴充檢查失敗：" + "；".join(checked["errors"]))
-    if request.get("training_mode", "standard") == "standard":
+    mode = request.get("training_mode", "standard")
+    if mode == "standard":
         return request
     plan = checked["plan"]
-    emit({"event": "log", "message": f"類別擴充：保留 {len(plan['base_classes'])} 類，新增 {len(plan['new_class_ids'])} 類；準備獨立舊／新驗證集。"})
-    mapped = {key: {split: _remap(samples, plan[f"{key}_label_map"]) for split, samples in dataset_samples(request["replay_dataset"] if key == "old" else request["dataset"]).items()} for key in ("old", "new")}
+    emit({"event": "log", "message": f"類別擴充：保留 {len(plan['base_classes'])} 個原類別名稱，新增 {len(plan['new_class_ids'])} 類；舊能力{'將獨立驗證' if request.get('replay_dataset') else '未提供驗證資料'}。"})
+    mapped = {"new": {split: _remap(samples, plan["new_label_map"]) for split, samples in dataset_samples(request["dataset"]).items()}}
+    if request.get("replay_dataset"):
+        mapped["old"] = {split: _remap(samples, plan["old_label_map"]) for split, samples in dataset_samples(request["replay_dataset"]).items()}
     format = "yolo_detection" if request["dataset"]["format"] in {"yolo_detection", "coco_detection"} else request["dataset"]["format"]
     root = Path(output) / "expansion_data"
-    merged = {split: mapped["old"][split] + mapped["new"][split] for split in ("train", "val")}
-    result = {**request, "class_expansion": plan, "dataset": _materialize(merged, plan["classes"], root / "mixed", format),
+    merged = {split: mapped["old"][split] + mapped["new"][split] if mode == "expand_classes" else mapped["new"][split] for split in ("train", "val")}
+    result = {**request, "class_expansion": plan,
+              "dataset": request["dataset"] if mode == "dual_branch" else _materialize(merged, plan["classes"], root / "mixed", format),
               "evaluation_datasets": {key: _materialize(samples, plan["classes"], root / key, format) for key, samples in mapped.items()}}
     (Path(output) / "class_expansion.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
     return result

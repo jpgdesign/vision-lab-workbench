@@ -4,7 +4,7 @@ import { api, activeJob, optionParts, statusNames, taskNames } from './api';
 import { ParameterField } from './InferenceCanvas';
 import { deviceAvailable } from './systemDevices';
 import { checkpointChoices } from './checkpoints';
-import { canTrainWithWeights, classAliases, freshExpansionPreview, trainingRequest } from './trainingExpansion';
+import { canTrainWithWeights, classAliases, effectiveTrainingParams, freshExpansionPreview, inferenceOnlyCheckpoint, isExpansionMode, requiresReplay, trainingModes, trainingRequest } from './trainingExpansion';
 import { ClassAliases, ExpansionPreview, ReplayDataset, RetentionSummary } from './TrainingExpansionPanel';
 
 const formatNames = { yolo_detection: 'YOLO Detection', coco_detection: 'COCO Detection', imagefolder: 'ImageFolder', video_csv: 'Video CSV' };
@@ -52,7 +52,7 @@ export function JobMonitor({ job, cancelJob, models, compact = false }) {
     <details className="log-panel" open={job?.status === 'failed'}><summary><Terminal size={14}/>執行紀錄 <span>{job?.logs?.length || 0}</span><ChevronDown size={14}/></summary><pre>{job?.logs?.length ? job.logs.join('\n') : '尚無執行紀錄。啟動後會顯示實際訓練輸出。'}</pre></details>
     {activeJob(job) && <button className="button danger full" onClick={() => cancelJob(job.id)}><Square size={13}/>取消訓練</button>}
     {result?.checkpoint_url && <a className="button primary full" href={result.checkpoint_url} download><ArrowDownToLine size={16}/>下載最佳權重</a>}
-    {!result?.checkpoint_url && result?.training?.checkpoint_directory && <div className="checkpoint-directory-note">最佳權重已保存為完整模型目錄，可從推論比較的權重選單載入。移轉模型時請保留整個目錄。<code>{result.training.checkpoint_directory}</code></div>}
+    {!result?.checkpoint_url && (result?.checkpoint_is_directory || result?.training?.checkpoint_directory) && <div className="checkpoint-directory-note">{result?.training?.checkpoint_format === 'frozen_branch_bundle' ? '原模型與新增分支已保存為完整雙分支模型，可從推論比較的權重選單載入。' : '最佳權重已保存為完整模型目錄，可從推論比較的權重選單載入。'}移轉模型時請保留整個目錄。{result?.training?.checkpoint_directory && <code>{result.training.checkpoint_directory}</code>}</div>}
     {result?.training?.classes?.length > 0 && <div className="trained-class-info"><strong>微調類別 · {result.training.classes.length}</strong><p>{result.training.classes.slice(0, 16).join(' · ')}{result.training.classes.length > 16 ? ` · +${result.training.classes.length - 16}` : ''}</p><span>回到推論比較，在同模型的「模型權重」中選擇這次微調結果。</span></div>}
     {result?.artifact_urls && <div className="artifact-links">{Object.entries(result.artifact_urls).map(([name, url]) => <a key={name} href={url} download><FileText size={12}/>{name}</a>)}</div>}
   </div>;
@@ -79,6 +79,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
   const [trainingMode, setTrainingMode] = useState('standard');
   const [replayDatasetId, setReplayDatasetId] = useState(''), [replayValidating, setReplayValidating] = useState(false);
   const [aliasRows, setAliasRows] = useState([]), [baseClasses, setBaseClasses] = useState([]);
+  const [baseClassText, setBaseClassText] = useState('');
   const [preview, setPreview] = useState(null), [previewing, setPreviewing] = useState(false);
   const previewRequest = useRef(0), currentSignature = useRef('');
   const zipInput = useRef(null);
@@ -90,7 +91,10 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
   const checkpoints = checkpointChoices(model?.id, registeredCheckpoints, jobs);
   const selectedCheckpoint = checkpoints.find(item => item.id === checkpointId);
   const weightsReady = canTrainWithWeights(model, checkpointId, checkpoints);
-  const expansionEnabled = trainingMode === 'expand_classes';
+  const expansionEnabled = isExpansionMode(trainingMode);
+  const replayRequired = requiresReplay(trainingMode);
+  const frozenExpansion = trainingMode === 'expand_frozen';
+  const originalGrounding = model?.id === 'grounding_dino_base' && !checkpointId && expansionEnabled && !replayRequired;
   useEffect(() => {
     const controller = new AbortController();
     setExamplesLoading(true); setExamplesError('');
@@ -105,7 +109,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
       setParams(previous => ({ ...defaults, ...Object.fromEntries(Object.entries(previous).filter(([key]) => Object.hasOwn(defaults, key))), ...(current?.license_accepted === true ? { accept_platform_license: true } : {}) }));
     } else {
       setParams({ ...defaults, ...(current?.license_accepted === true ? { accept_platform_license: true } : {}) }); setFormat(current?.capabilities?.training?.dataset_formats?.[0] || ''); setDatasetId(''); setValidation(null);
-      setCheckpointId(''); setTrainingMode('standard'); setReplayDatasetId(''); setAliasRows([]); setBaseClasses([]); setPreview(null);
+      setCheckpointId(''); setTrainingMode('standard'); setReplayDatasetId(''); setAliasRows([]); setBaseClasses([]); setBaseClassText(''); setPreview(null);
       configuredModel.current = current?.id;
     }
     try { if (current?.id) localStorage.setItem('vision-lab-train-model', current.id); } catch { /* Optional preference persistence. */ }
@@ -114,11 +118,13 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
   const licenseRequired = supported.includes('accept_platform_license');
   const licenseAccepted = model?.license_accepted === true;
   const licenseSpec = capability.parameters?.find(parameter => parameter.key === 'accept_platform_license');
-  const requestParams = Object.fromEntries(supported.filter(key => params[key] !== undefined).map(key => [key, params[key]]));
+  const effectiveParams = effectiveTrainingParams(trainingMode, model?.task, params);
+  const requestParams = Object.fromEntries(supported.filter(key => effectiveParams[key] !== undefined).map(key => [key, effectiveParams[key]]));
   if (licenseRequired && licenseAccepted) requestParams.accept_platform_license = true;
   let aliases = {}, aliasError = '';
   if (expansionEnabled) { try { aliases = classAliases(aliasRows); } catch (error) { aliasError = error.message; } }
-  const requestBody = trainingRequest({ modelId: model?.id, datasetId, checkpointId, mode: trainingMode, replayDatasetId, aliases, params: requestParams });
+  const baseClassNames = originalGrounding ? baseClassText.split(/\r?\n/).map(value => value.trim()).filter(Boolean) : [];
+  const requestBody = trainingRequest({ modelId: model?.id, datasetId, checkpointId, mode: trainingMode, replayDatasetId, aliases, baseClassNames, params: requestParams });
   const signature = JSON.stringify({ request: requestBody, aliasRows: expansionEnabled ? aliasRows : [], format, dataset, replay: datasets.find(item => item.id === replayDatasetId), selectedCheckpoint });
   currentSignature.current = signature;
   const previewFresh = freshExpansionPreview(preview, signature);
@@ -152,7 +158,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
     else if (typeof (capability.defaults || {})[key] === 'boolean') param = { key, label: stringLabels[key] || key, type: 'boolean' };
     else if (info || typeof (capability.defaults || {})[key] === 'number') param = { key, label: info?.[0] || key, type: 'number', min: info?.[1], max: info?.[2], step: info?.[3] || 'any' };
     else param = { key, label: stringLabels[key] || key, type: 'string' };
-    return <ParameterField key={key} param={param} value={params[key]} onChange={value => setParams(previous => ({ ...previous, [key]: value }))}/>;
+    return <ParameterField key={key} param={param} value={effectiveParams[key]} disabled={frozenExpansion && ['strategy', 'freeze'].includes(key)} onChange={value => setParams(previous => ({ ...previous, [key]: value }))}/>;
   }
   async function acceptValidation(data) {
     setValidation(data);
@@ -183,7 +189,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
   async function startTraining() {
     if (!model?.training_supported || !dataset) return;
     if (!weightsReady) { notify('請選擇可用的基礎權重。', true); return; }
-    if (expansionEnabled && (!previewFresh || aliasError || !replayDatasetId)) { notify('請先完成目前設定的擴充計畫驗證。', true); return; }
+    if (expansionEnabled && (!previewFresh || aliasError || replayRequired && !replayDatasetId)) { notify('請先完成目前設定的擴充計畫驗證。', true); return; }
     if (!deviceAvailable(params.device, system)) { notify('選取的運算裝置目前不可用，請重新選擇。', true); return; }
     if (licenseRequired && !licenseAccepted && params.accept_platform_license !== true) { notify('請先閱讀模型授權條款，並勾選確認具備所需使用授權。', true); return; }
     setSubmitting(true);
@@ -191,7 +197,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
     catch (error) { notify(error.message, true); } finally { setSubmitting(false); }
   }
   async function previewTraining() {
-    if (!dataset || !weightsReady || !replayDatasetId || aliasError) return;
+    if (!dataset || !weightsReady || replayRequired && !replayDatasetId || aliasError) return;
     const requestId = ++previewRequest.current, requestSignature = signature;
     setPreviewing(true); setPreview(null);
     try {
@@ -205,7 +211,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
   }
   const basicKeys = ['epochs', 'batch_size', 'imgsz', 'lr', 'weight_decay', 'optimizer', 'loss', 'scheduler', 'strategy'];
   const extraKeys = supported.filter(key => !basicKeys.includes(key) && !['patience', 'accept_platform_license'].includes(key));
-  const reason = !model?.training_supported ? trainingNotConnected : !weightsReady ? checkpointId ? '選取的微調權重或所需環境不可用，請重新選擇。' : model?.reason || '模型環境尚未就緒。' : !deviceAvailable(params.device, system) ? '選取的運算裝置目前不可用，請重新選擇。' : licenseRequired && !licenseAccepted && params.accept_platform_license !== true ? '請先確認 RF-DETR 2XL 的模型使用授權。' : !dataset ? '請先載入並驗證一份資料集。' : validating || replayValidating ? '正在驗證資料集。' : expansionEnabled && !replayDatasetId ? '請選擇混合訓練的舊資料集。' : expansionEnabled && aliasError ? aliasError : expansionEnabled && !previewFresh ? '請先驗證目前設定的擴充計畫；參數變更後需重新驗證。' : '';
+  const reason = !model?.training_supported ? trainingNotConnected : !weightsReady ? inferenceOnlyCheckpoint(selectedCheckpoint) ? '雙分支模型目前只供推論，請選擇原始模型或單一微調權重作為訓練起點。' : checkpointId ? '選取的微調權重或所需環境不可用，請重新選擇。' : model?.reason || '模型環境尚未就緒。' : !deviceAvailable(params.device, system) ? '選取的運算裝置目前不可用，請重新選擇。' : licenseRequired && !licenseAccepted && params.accept_platform_license !== true ? '請先確認 RF-DETR 2XL 的模型使用授權。' : !dataset ? '請先載入並驗證一份資料集。' : validating || replayValidating ? '正在驗證資料集。' : replayRequired && !replayDatasetId ? '請選擇混合訓練的舊資料集。' : expansionEnabled && aliasError ? aliasError : expansionEnabled && !previewFresh ? '請先驗證目前設定的擴充計畫；參數變更後需重新驗證。' : '';
   const formatInfo = {
     yolo_detection: ['YOLO 格式需要 dataset.yaml、訓練與驗證影像，以及對應的標註文字檔。', 'dataset.yaml\nimages/train/ · images/val/\nlabels/train/ · labels/val/\n\n# 每行標註：class_id x_center y_center width height\n# 座標以影像尺寸正規化為 0–1'],
     coco_detection: ['資料夾內需要 train.json 與 val.json，並包含 COCO bounding box 標註與影像。', 'dataset/\n  train.json\n  val.json\n  images/\n    image_001.jpg\n    image_002.jpg'],
@@ -216,7 +222,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
     <div className="page-intro"><div><span className="eyebrow"><span/>FINE-TUNING STUDIO</span><h1>把資料，變成你的模型<span className="accent-dot">。</span></h1><p>從監督資料集開始，控制訓練設定，觀察每一輪學習的變化。</p></div><span className="intro-badge"><Waypoints size={16}/>本機訓練 · 可重現設定</span></div>
     <div className="training-layout"><div className="training-configuration">
       <section className="config-section"><div className="section-heading"><span className="step-number">01</span><div><h2>選擇基礎模型</h2><p>模型決定輸入格式，以及可使用的訓練方法。</p></div><Settings2 size={19}/></div><div className="config-body"><label className="field"><span>預訓練模型</span><select value={model?.id || ''} disabled={validating || replayValidating} onChange={event => setModelId(event.target.value)}>{models.map(item => <option key={item.id} value={item.id}>{item.name} · {taskNames[item.task]}{!item.training_supported ? '（微調尚未接入）' : ''}</option>)}</select></label><div className={`model-readiness ${weightsReady ? '' : 'warning'}`}><span className="status-dot"/><span>{model?.training_supported ? weightsReady ? '微調介面已就緒' : model.reason || '模型環境尚未就緒。' : trainingNotConnected}</span>{weightsReady && <span className="subtle">使用本機權重</span>}</div>
-        <label className="field"><span>訓練起始權重</span><select value={checkpointId} disabled={submitting || replayValidating} onChange={event => setCheckpointId(event.target.value)}><option value="" disabled={!model?.available}>{model?.available ? '原始預訓練權重' : '原始權重尚未齊全'}</option>{checkpointId && !selectedCheckpoint && <option value={checkpointId} disabled>先前權重已不可用</option>}{checkpoints.map(item => <option key={item.id} value={item.id} disabled={!item.valid}>{item.name}{!item.valid ? ' · 路徑失效' : ''}</option>)}</select></label>
+        <label className="field"><span>訓練起始權重</span><select value={checkpointId} disabled={submitting || replayValidating} onChange={event => setCheckpointId(event.target.value)}><option value="" disabled={!model?.available}>{model?.available ? '原始預訓練權重' : '原始權重尚未齊全'}</option>{checkpointId && !selectedCheckpoint && <option value={checkpointId} disabled>先前權重已不可用</option>}{checkpoints.map(item => <option key={item.id} value={item.id} disabled={!item.valid || inferenceOnlyCheckpoint(item)}>{item.name}{inferenceOnlyCheckpoint(item) ? ' · 雙分支僅供推論，不能作為訓練起點' : !item.valid ? ' · 路徑失效' : ''}</option>)}</select></label>
         <p className="training-source-note">可從原始模型或先前的微調權重開始新一輪訓練；最佳化器與排程會依這次設定重新建立。</p>
         {selectedCheckpoint?.training?.classes?.length > 0 && <div className="trained-class-info"><strong>來源權重類別 · {selectedCheckpoint.training.classes.length}</strong><p>{selectedCheckpoint.training.classes.slice(0, 12).join(' · ')}{selectedCheckpoint.training.classes.length > 12 ? ' …' : ''}</p></div>}
         {model?.id === 'dinov3_7b' && <p className="training-source-note">DINOv3 以視覺表徵加上分類頭進行 ImageFolder 影像分類。第一次訓練建立分類頭；要擴充分類，請選已有分類頭的微調權重。完整 7B 模型需要齊全權重及足夠記憶體。</p>}
@@ -236,9 +242,12 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
         {dataset && <div className="dataset-success"><div><span><Check size={15}/>資料驗證通過</span><strong>{dataset.name}</strong></div><div className="dataset-stats"><span><b>{dataset.train_count}</b>訓練樣本</span><span><b>{dataset.val_count}</b>驗證樣本</span><span><b>{dataset.num_classes || dataset.classes?.length}</b>類別</span></div><p>{dataset.classes?.slice(0, 12).join(' · ')}{dataset.classes?.length > 12 ? ` · +${dataset.classes.length - 12}` : ''}</p></div>}
       </div></section>
       <section className="config-section"><div className="section-heading"><span className="step-number">03</span><div><h2>定義訓練方式</h2><p>只顯示這個模型實際支援的超參數與最佳化方法。</p></div><Gauge size={19}/></div><div className="config-body">
-        <section className="training-mode"><label className="field"><span>類別學習方式</span><select value={trainingMode} disabled={!model?.training_supported || submitting || replayValidating} onChange={event => setTrainingMode(event.target.value)}><option value="standard">標準微調 · 使用資料集的類別</option>{capability.training_modes?.includes('expand_classes') && <option value="expand_classes">擴充類別 · 保留原有類別並追加</option>}</select></label>
-          <p>{expansionEnabled ? '保留原有分類輸出、追加新類別，混合新舊訓練資料，並比較舊任務訓練前後的驗證結果。仍可能退步，請以實際指標判斷。' : '輸出類別依這次資料集建立。原模型未包含在資料集的類別不會自動保留；若要追加能力，請選擴充類別。'}</p>
-          {expansionEnabled && <><ReplayDataset key={model?.id} datasets={datasets} setDatasets={setDatasets} formats={capability.dataset_formats || []} selectedId={replayDatasetId} onChange={setReplayDatasetId} onBusy={setReplayValidating} notify={notify}/><ClassAliases rows={aliasRows} setRows={setAliasRows} classes={dataset?.classes || []} baseClasses={baseClasses.length ? baseClasses : selectedCheckpoint?.training?.classes || []}/>{aliasError && <p className="inline-error">{aliasError}</p>}<button className="button secondary expansion-preflight-button" disabled={!dataset || !weightsReady || !replayDatasetId || Boolean(aliasError) || validating || replayValidating || previewing || submitting} onClick={previewTraining}>{previewing ? <LoaderCircle className="spin" size={14}/> : <FileCheck2 size={14}/>}驗證擴充計畫</button><ExpansionPreview result={preview?.signature === signature ? preview.result : null}/></>}
+        <section className="training-mode"><label className="field"><span>類別學習方式</span><select value={trainingMode} disabled={!model?.training_supported || submitting || replayValidating} onChange={event => setTrainingMode(event.target.value)}>{Object.entries(trainingModes).filter(([value]) => value === 'standard' || capability.training_modes?.includes(value)).map(([value, info]) => <option key={value} value={value}>{info.label}</option>)}</select></label>
+          <p>{trainingModes[trainingMode]?.description}</p>
+          {frozenExpansion && <p className="training-strategy-lock">{model?.task === 'detection' ? '本模式固定使用凍結骨幹；YOLO 自動凍結完整骨幹（freeze = 0）。' : '本模式固定使用只訓練分類頭。'}這不會凍結原分類頭，也不保證原類別準確率。</p>}
+          {trainingMode === 'dual_branch' && <p>原分支在相同輸入與參數下保留原預測；新增分支獨立學習。合併畫面的框重疊、排序與顯示結果仍可能不同，目前請使用圖片／影片推論比較。</p>}
+          {originalGrounding && <label className="field base-class-names"><span>Grounding DINO 原有提示類別 <small>選填，每行一個英文名稱</small></span><textarea value={baseClassText} rows={5} onChange={event => setBaseClassText(event.target.value)} placeholder={'person\ncar\nbroccoli'}/><small>留空時使用預設 COCO 80 類提示。這是本次原分支／舊能力評估的提示範圍，並非模型固定的完整詞彙。</small></label>}
+          {expansionEnabled && <><ReplayDataset key={model?.id} datasets={datasets} setDatasets={setDatasets} formats={capability.dataset_formats || []} selectedId={replayDatasetId} onChange={setReplayDatasetId} onBusy={setReplayValidating} notify={notify} required={replayRequired}/><ClassAliases rows={aliasRows} setRows={setAliasRows} classes={dataset?.classes || []} baseClasses={baseClasses.length ? baseClasses : selectedCheckpoint?.training?.classes || []}/>{aliasError && <p className="inline-error">{aliasError}</p>}<button className="button secondary expansion-preflight-button" disabled={!dataset || !weightsReady || replayRequired && !replayDatasetId || Boolean(aliasError) || validating || replayValidating || previewing || submitting} onClick={previewTraining}>{previewing ? <LoaderCircle className="spin" size={14}/> : <FileCheck2 size={14}/>}驗證擴充計畫</button><ExpansionPreview result={preview?.signature === signature ? preview.result : null} mode={trainingMode}/></>}
         </section>
         <div className="training-params">{basicKeys.map(fieldFor)}</div>{!model?.training_supported && <p className="empty-text">選擇微調流程已接入的模型後，即可設定參數。</p>}
         {supported.includes('patience') && <section className={`early-stopping ${earlyStoppingEnabled ? 'enabled' : ''}`} aria-labelledby="early-stopping-heading"><div className="early-stopping-heading"><div><h3 id="early-stopping-heading">Early Stopping <span>提前停止</span></h3><p>連續幾輪沒有改善就停止；停用時跑到設定輪數。</p></div><label className="check-field"><input type="checkbox" checked={earlyStoppingEnabled} onChange={event => toggleEarlyStopping(event.target.checked)}/><span>啟用</span></label></div><div className="early-stopping-controls"><label className="field"><span>耐心輪數 <small>Patience</small></span><div className="patience-input"><input aria-label="Early Stopping 耐心輪數" type="number" min={1} max={patienceMaximum} step={1} disabled={!earlyStoppingEnabled} value={earlyStoppingEnabled ? params.patience : rememberedPatience} onChange={changePatience}/><span>輪</span></div></label><p>{earlyMonitorDescription}<span>{earlyStoppingEnabled ? `連續 ${params.patience} 輪未改善時，自動結束訓練。` : '目前已停用（patience = 0）。'}</span></p></div></section>}

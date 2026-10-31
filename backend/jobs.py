@@ -118,7 +118,7 @@ class JobManager:
             request["id"] = job_id
             write_json_atomic(directory / "request.json", request)
             job = {"id": job_id, "kind": request["kind"], "model_id": request["model_id"], "status": "queued", "progress": 0.0, "message": "等待 GPU 執行", "created_at": now_iso(), "params": request.get("params", {}), "logs": [], "metrics": [], "_artifacts": []}
-            for field in ("media_id", "dataset_id", "checkpoint_job_id", "checkpoint_id", "training_mode", "replay_dataset_id", "class_aliases"):
+            for field in ("media_id", "dataset_id", "checkpoint_job_id", "checkpoint_id", "training_mode", "replay_dataset_id", "class_aliases", "base_class_names"):
                 if field in request:
                     job[field] = request[field]
             if request["kind"] == "live":
@@ -476,16 +476,18 @@ class JobManager:
         if "artifact_urls" in public:
             raise ValueError("工作應回傳 artifacts 路徑，由服務建立公開 URL。")
         def checkpoint_directory(value):
-            if (not isinstance(value, str) or public.get("training", {}).get("model_id") != "dinov3_7b"
-                    or public.get("training", {}).get("checkpoint_format") != "dinov3_classifier_safetensors"):
-                raise ValueError("只有完整 DINOv3 分類 checkpoint 可回傳模型資料夾。")
+            training = public.get("training", {})
+            supported = (isinstance(training, dict) and (training.get("checkpoint_format") == "frozen_branch_bundle"
+                         or training.get("model_id") == "dinov3_7b" and training.get("checkpoint_format") == "dinov3_classifier_safetensors"))
+            if not isinstance(value, str) or not supported:
+                raise ValueError("只有完整分類／雙分支 checkpoint 可回傳模型資料夾。")
             path = Path(value)
             path = path if path.is_absolute() else directory / path
             if (path.is_symlink() or not path.is_dir() or not path.resolve().is_relative_to(directory)
                     or path.resolve().parent != directory or path.name not in {"best", "last"}):
                 raise ValueError("checkpoint 資料夾超出工作範圍。")
             from .model_registry import validate_checkpoint
-            validate_checkpoint("dinov3_7b", str(path.resolve()))
+            validate_checkpoint(training["model_id"], str(path.resolve()))
             return path.name
         for source, destination in (("media_path", "media_url"), ("checkpoint_path", "checkpoint_url")):
             if source in public:
@@ -538,6 +540,13 @@ class JobManager:
             if job.get("model_id") != model_id:
                 raise ValueError("訓練權重與所選模型不相容。")
         directory = (self.job_root / job_id).resolve()
+        from .dual_branch import is_bundle
+        if is_bundle(directory / "best"):
+            checkpoint = directory / "best"
+            if checkpoint.is_symlink() or not checkpoint.resolve().is_relative_to(directory):
+                raise ValueError("雙分支 checkpoint 超出工作範圍。")
+            from .model_registry import validate_checkpoint
+            return validate_checkpoint(model_id, str(checkpoint.resolve()))
         if model_id == "dinov3_7b":
             checkpoint = directory / "best"
             if checkpoint.is_symlink() or not checkpoint.is_dir() or not checkpoint.resolve().is_relative_to(directory):

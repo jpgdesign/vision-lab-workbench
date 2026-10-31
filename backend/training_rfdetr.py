@@ -191,6 +191,15 @@ preserved source groups, so require a supported subset of the saved groups.
             "positional_encoding_size": metadata["positional_encoding_size"]}
 
 
+def _freeze_backbone(model) -> int:
+    """Native train() re-enters train mode each epoch; freeze buffers too."""
+    backbone = model.model.model.backbone
+    backbone.requires_grad_(False)
+    backbone.eval()
+    model.callbacks["on_train_batch_start"].append(lambda event: event["model"].backbone.eval())
+    return sum(parameter.numel() for parameter in backbone.parameters())
+
+
 def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     from .training import EarlyStoppingTracker, _catalog_weight, _resolve_device, _validated_dataset, _write_json
     import torch
@@ -200,6 +209,9 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     from .detection_expansion import DetectionRetention, expansion_spec, expand_rfdetr_rows, rfdetr_predictor
 
     p = normalize_training_params(request.get("params"))
+    mode = request.get("training_mode", "standard")
+    if mode == "expand_frozen":
+        p = {**p, "strategy": "freeze_backbone"}
     dataset = _validated_dataset(request, ("yolo_detection", "coco_detection"))
     output = Path(output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -222,7 +234,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         checkpoint = _catalog_weight(MODEL_ID, request.get("model_weight_path"))
     _write_json(output / "training_config.json", {"model_id": MODEL_ID, "params": p,
                 "dataset_id": dataset.get("id"), "dataset_classes": classes, "checkpoint_source": "local_catalog", "schema_version": 1,
-                **({"class_expansion": expansion} if expansion else {})})
+                **({"training_mode": mode, "class_expansion": expansion} if expansion else {})})
     converted = _prepare_coco(dataset, output, emit)
     emit({"event": "progress", "progress": 0.03, "message": "載入本機 RF-DETR 2XL 權重"})
 
@@ -248,7 +260,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     if retention:
         if [model.class_names.get(i) for i in expansion["base_class_ids"]] != expansion["base_classes"]:
             raise ValueError("RF-DETR 來源 category ID 的語意與類別擴充映射不符。")
-        emit({"event": "log", "message": "以 RF-DETR 原始 category ID 評估原類別驗證基準。"})
+        emit({"event": "log", "message": "以 RF-DETR 原始 category ID 評估原類別驗證基準。" if retention.has_old else "未提供舊驗證集；舊能力將標示未量測。"})
         retention.baseline(rfdetr_predictor(model, retention.settings, expansion["base_class_ids"]))
         expansion_audit = expand_rfdetr_rows(model.model.model, expansion)
         # Native train_from_config otherwise repeats/crops output rows. Our
@@ -258,10 +270,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         _write_json(output / "expansion_transfer.json", expansion_audit)
     frozen_count = 0
     if p["strategy"] == "freeze_backbone":
-        for parameter in model.model.model.backbone.parameters():
-            frozen_count += parameter.numel()
-            parameter.requires_grad_(False)
-        model.callbacks["on_train_batch_start"].append(lambda event: event["model"].backbone.eval())
+        frozen_count = _freeze_backbone(model)
     stopper = EarlyStoppingTracker(p["patience"], "max", "val mAP50–95", emit)
     metrics = []
     started = time.monotonic()
@@ -287,7 +296,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                     "positional_encoding_size": model.model_config.positional_encoding_size,
                     "epoch": epoch, "val_map50_95": score, "strategy": p["strategy"],
                     "early_stopping": stopper.summary(), "format": "rfdetr_pth",
-                    **({"training_mode": "expand_classes", "base_classes": expansion["base_classes"],
+                    **({"training_mode": mode, "base_classes": expansion["base_classes"],
                         "class_expansion": expansion, "expansion_transfer": expansion_audit} if expansion else {})})
 
     def epoch_end(stats):
@@ -346,6 +355,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     # The native trainer resizes classification heads to the dataset class count.
     trainable_count = sum(x.numel() for x in model.model.model.parameters() if x.requires_grad)
     effective = {"device": str(device), "amp": kwargs["amp"], "epochs_completed": len(metrics),
+                 "training_mode": mode,
                  "trainable_parameters": trainable_count, "frozen_parameters": frozen_count,
                  "native_training_arguments": kwargs, "early_stopping": stopper.summary(), "requested_params": p,
                  "weight_update": update_evidence}
@@ -369,4 +379,4 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
             "training": {"model_id": MODEL_ID, "checkpoint_format": "rfdetr_pth", "checkpoint_directory": str(best.parent),
                          "classes": classes, "class_id_offset": 1, "best_epoch": stopper.best_epoch,
                          "early_stopping": stopper.summary(), "weight_update": update_evidence,
-                         **({"class_expansion": expansion, "retention": retention_result} if expansion else {})}}
+                         **({"training_mode": mode, "class_expansion": expansion, "retention": retention_result} if expansion else {})}}
