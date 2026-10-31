@@ -8,12 +8,16 @@ import { inferenceRuntimeDetails } from './inferenceRuntime';
 import { branchPredictionGroups } from './predictionBranches';
 import BranchPredictions from './BranchPredictions';
 import { mediaTrainingUsage } from './mediaTrainingUsage';
+import { applyCanvasNodeChanges, DEFAULT_NODE_WIDTH, MAX_NODE_WIDTH, MIN_CANVAS_ZOOM, MIN_NODE_WIDTH, responsiveNodeWidth, restoreNodeSizing } from './canvasSizing';
 import './inferenceRuntime.css';
 import './mediaTrainingUsage.css';
+import './inferenceSizing.css';
 
 const CanvasContext = createContext(null);
 const STORAGE_KEY = 'vision-lab-canvas-v1';
-const READABLE_ZOOM = 0.72;
+// Reserve the full default width in automatic placement so widening a narrow
+// viewport cannot make responsive cards overlap their neighbours.
+const placementWidth = node => node.data.widthMode === 'auto' ? DEFAULT_NODE_WIDTH : Number(node.style?.width || DEFAULT_NODE_WIDTH);
 function readStored() { try { const value = JSON.parse(localStorage.getItem(STORAGE_KEY)); return value?.version === 1 ? value : null; } catch { return null; } }
 function safeNodes(nodes, models) {
   if (!Array.isArray(nodes) || nodes.length > 24) throw new Error('畫布最多允許 24 個比較區塊。');
@@ -21,7 +25,8 @@ function safeNodes(nodes, models) {
     const model = models.find(item => item.id === node?.data?.modelId);
     const params = {};
     for (const param of model?.capabilities?.inference_params || []) { const value = node.data?.params?.[param.key]; if (['string', 'number', 'boolean'].includes(typeof value)) params[param.key] = value; }
-    return { id: uid(), type: 'inference', dragHandle: '.node-drag', position: { x: Math.max(-10000, Math.min(10000, Number(node.position?.x) || index * 460)), y: Math.max(-10000, Math.min(10000, Number(node.position?.y) || 30)) }, style: { width: Math.max(370, Math.min(900, Number(node.style?.width) || 420)), height: Math.max(540, Math.min(1200, Number(node.style?.height) || 600)) }, data: { modelId: model?.id || models.find(model => model.inference_supported)?.id || '', params: { ...modelDefaults(model), ...params }, mediaId: typeof node.data?.mediaId === 'string' ? node.data.mediaId : '', jobId: typeof node.data?.jobId === 'string' ? node.data.jobId : null, checkpointJobId: typeof node.data?.checkpointJobId === 'string' ? node.data.checkpointJobId : '', checkpointId: typeof node.data?.checkpointId === 'string' ? node.data.checkpointId : '' } };
+    const sizing = restoreNodeSizing(node);
+    return { id: uid(), type: 'inference', dragHandle: '.node-drag', position: { x: Math.max(-10000, Math.min(10000, Number(node.position?.x) || index * 460)), y: Math.max(-10000, Math.min(10000, Number(node.position?.y) || 30)) }, style: sizing.style, data: { widthMode: sizing.widthMode, modelId: model?.id || models.find(model => model.inference_supported)?.id || '', params: { ...modelDefaults(model), ...params }, mediaId: typeof node.data?.mediaId === 'string' ? node.data.mediaId : '', jobId: typeof node.data?.jobId === 'string' ? node.data.jobId : null, checkpointJobId: typeof node.data?.checkpointJobId === 'string' ? node.data.checkpointJobId : '', checkpointId: typeof node.data?.checkpointId === 'string' ? node.data.checkpointId : '' } };
   });
 }
 export function ParameterField({ param, value, onChange, compact = false, disabled = false }) {
@@ -39,7 +44,7 @@ function MediaTile({ item, selected, onSelect }) {
 
 function InferenceNode({ id, data, selected }) {
   const context = useContext(CanvasContext);
-  const { models, media, jobs, system, confirmLicense, checkpoints: registeredCheckpoints, sharedInput, selectedMedia, clearingCache, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder } = context;
+  const { models, media, jobs, system, confirmLicense, checkpoints: registeredCheckpoints, sharedInput, selectedMedia, clearingCache, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder, resetNodeSize, stopAutoFit } = context;
   const [advanced, setAdvanced] = useState(false);
   const [original, setOriginal] = useState(false);
   const model = models.find(item => item.id === data.modelId);
@@ -66,8 +71,8 @@ function InferenceNode({ id, data, selected }) {
   const trainedClasses = selectedCheckpoint?.training?.classes?.filter(name => typeof name === 'string') || [];
   const suggestedPrompt = selectedCheckpoint?.training?.caption || (trainedClasses.length ? `${trainedClasses.join(' . ')} .` : '');
   return <div className={`inference-node ${active ? 'is-running' : ''}`}>
-    <NodeResizer isVisible={selected} minWidth={370} minHeight={550} maxWidth={900} maxHeight={1300} lineClassName="resize-line" handleClassName="resize-handle" />
-    <div className="node-drag"><div className="node-heading"><span className="node-number">{String(nodeOrder.indexOf(id) + 1).padStart(2, '0')}</span><div><strong>{model?.name || '選擇模型'}</strong><small>{model ? taskNames[model.task] : '新增推論實驗'}</small></div></div><div className="node-actions nodrag"><button className="icon-button" title="複製區塊" aria-label="複製區塊" onClick={() => duplicateNode(id)}><Copy size={15}/></button><button className="icon-button danger-hover" title="移除區塊" aria-label="移除區塊" onClick={() => removeNode(id)}><X size={16}/></button></div></div>
+    <NodeResizer isVisible={selected} minWidth={MIN_NODE_WIDTH} minHeight={300} maxWidth={MAX_NODE_WIDTH} maxHeight={2000} onResizeStart={stopAutoFit} lineClassName="resize-line" handleClassName="resize-handle" />
+    <div className="node-drag"><div className="node-heading"><span className="node-number">{String(nodeOrder.indexOf(id) + 1).padStart(2, '0')}</span><div><strong>{model?.name || '選擇模型'}</strong><small>{model ? taskNames[model.task] : '新增推論實驗'}</small></div></div><div className="node-actions nodrag"><button className="icon-button" title="自動調整區塊尺寸" aria-label="自動調整區塊尺寸" onClick={() => resetNodeSize(id)}><Maximize size={15}/></button><button className="icon-button" title="複製區塊" aria-label="複製區塊" onClick={() => duplicateNode(id)}><Copy size={15}/></button><button className="icon-button danger-hover" title="移除區塊" aria-label="移除區塊" onClick={() => removeNode(id)}><X size={16}/></button></div></div>
     <div className="node-config nodrag nowheel">
       <label className="field"><span>模型 <span className="tiny-label">MODEL</span></span><select value={data.modelId} disabled={active} onChange={event => { const next = models.find(item => item.id === event.target.value); updateNode(id, { modelId: event.target.value, params: modelDefaults(next), jobId: null, checkpointJobId: '', checkpointId: '' }); }}>{models.map(item => <option value={item.id} key={item.id}>{item.name}{!item.available ? ' · 未就緒' : !item.inference_supported ? ' · 尚未支援' : ''}</option>)}</select></label>
       {(checkpoints.length > 0 || checkpointSelection(data)) && <label className="field checkpoint-field"><span>模型權重 <span className="tiny-label">CHECKPOINT</span></span><select value={checkpointSelection(data)} disabled={active} onChange={event => updateNode(id, { checkpointId: event.target.value, checkpointJobId: '', jobId: null })}><option value="" disabled={!model?.available}>{model?.available ? '原始預訓練權重' : '原始權重未齊，請選擇微調權重'}</option>{checkpointSelection(data) && !selectedCheckpoint && <option value={checkpointSelection(data)} disabled>先前權重已不可用</option>}{checkpoints.map(item => <option key={item.id} value={item.id} disabled={!item.valid}>{item.source === 'external' ? '外部 · ' : ''}{item.name}{!item.valid ? ' · 路徑失效' : ''}</option>)}</select></label>}
@@ -96,7 +101,8 @@ const nodeTypes = { inference: InferenceNode };
 
 function CanvasInner(props) {
   const { models, media, jobs, system, confirmLicense, checkpoints = [], notify, submitJob, cancelJob, uploadMedia, visible } = props;
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes] = useNodesState([]);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [selectedMedia, setSelectedMedia] = useState('');
   const [sharedInput, setSharedInput] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -106,11 +112,26 @@ function CanvasInner(props) {
   const [clearingCache, setClearingCache] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const fileInput = useRef(null), importInput = useRef(null);
+  const flowWrapper = useRef(null), autoFit = useRef(true), fitTargets = useRef(null);
   const flow = useReactFlow();
   const nodesRef = useRef(nodes); nodesRef.current = nodes;
+  const defaultWidth = responsiveNodeWidth(canvasSize.width);
+  const onNodesChange = useCallback(changes => setNodes(previous => applyCanvasNodeChanges(changes, previous)), [setNodes]);
+  const stopAutoFit = useCallback(() => { autoFit.current = false; }, []);
   function fitReadable(items = nodesRef.current) {
-    flow.fitView({ nodes: items.slice(0, 2).map(node => ({ id: node.id })), padding: 0.08, minZoom: READABLE_ZOOM, maxZoom: 1, duration: 200 });
+    if (!autoFit.current) return;
+    const targets = fitTargets.current ? items.filter(node => fitTargets.current.includes(node.id)) : items.slice(0, canvasSize.width && canvasSize.width < MIN_NODE_WIDTH * 2 + 88 ? 1 : 2);
+    if (targets.length) flow.fitView({ nodes: targets.map(node => ({ id: node.id })), padding: 0.1, minZoom: MIN_CANVAS_ZOOM, maxZoom: 1, duration: 200 });
   }
+  useEffect(() => {
+    if (!flowWrapper.current) return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setCanvasSize(previous => Math.abs(previous.width - width) < 1 && Math.abs(previous.height - height) < 1 ? previous : { width, height });
+    });
+    observer.observe(flowWrapper.current);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (initialized || !models.length) return;
     const stored = readStored();
@@ -120,32 +141,50 @@ function CanvasInner(props) {
       catch { setNodes([]); }
     } else {
       const initialModels = models.filter(model => model.available && model.inference_supported).slice(0, 2);
-      setNodes(initialModels.map((model, index) => ({ id: uid(), type: 'inference', dragHandle: '.node-drag', position: { x: 28 + index * 452, y: 30 }, style: { width: 420, height: 590 }, data: { modelId: model.id, mediaId: first, params: modelDefaults(model), jobId: null } })));
+      setNodes(initialModels.map((model, index) => ({ id: uid(), type: 'inference', dragHandle: '.node-drag', position: { x: 28 + index * (DEFAULT_NODE_WIDTH + 32), y: 30 }, style: { width: defaultWidth }, data: { widthMode: 'auto', modelId: model.id, mediaId: first, params: modelDefaults(model), jobId: null } })));
       setSelectedMedia(first);
     }
     setInitialized(true);
   }, [models, media, initialized, setNodes]);
   useEffect(() => { if (!selectedMedia && media.length) setSelectedMedia(media[0].id); }, [media, selectedMedia]);
   useEffect(() => { if (initialized) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, nodes, selectedMedia, sharedInput })); } catch { /* Browser storage may be unavailable. Export remains available. */ } } }, [nodes, selectedMedia, sharedInput, initialized]);
-  useEffect(() => { if (visible && initialized) { const timer = setTimeout(() => fitReadable(), 100); return () => clearTimeout(timer); } }, [visible, initialized]);
+  useEffect(() => {
+    if (initialized && canvasSize.width) setNodes(previous => previous.map(node => node.data.widthMode === 'auto' && node.style?.width !== defaultWidth ? { ...node, style: { ...node.style, width: defaultWidth } } : node));
+  }, [initialized, canvasSize.width, defaultWidth, nodes.length, setNodes]);
+  // fitView itself schedules a node measurement. Depend on actual geometry,
+  // not the nodes array, to avoid a measure / fit feedback loop.
+  const geometry = nodes.map(node => `${node.id}:${node.style?.width}:${node.measured?.height || 0}`).join('|');
+  useEffect(() => {
+    if (!visible || !initialized || !canvasSize.height || !autoFit.current) return undefined;
+    const timer = setTimeout(() => { if (autoFit.current && !nodesRef.current.some(node => node.dragging || node.resizing)) fitReadable(); }, 120);
+    return () => clearTimeout(timer);
+  }, [visible, initialized, canvasSize.width, canvasSize.height, geometry]);
   const updateNode = useCallback((id, patch) => setNodes(previous => previous.map(node => node.id === id ? { ...node, data: { ...node.data, ...patch } } : node)), [setNodes]);
   function addNode() {
     if (nodes.length >= 24) return notify('畫布最多允許 24 個比較區塊。', true);
     const model = models.find(item => item.available && item.inference_supported) || models[0];
-    const rightEdge = nodes.reduce((end, node) => Math.max(end, node.position.x + Number(node.style?.width || 420)), -4);
-    const node = { id: uid(), type: 'inference', dragHandle: '.node-drag', position: { x: rightEdge + 32, y: 30 }, style: { width: 420, height: 590 }, data: { modelId: model?.id || '', mediaId: selectedMedia, params: modelDefaults(model), jobId: null }, selected: true };
+    const rightEdge = nodes.reduce((end, node) => Math.max(end, node.position.x + placementWidth(node)), -4);
+    const node = { id: uid(), type: 'inference', dragHandle: '.node-drag', position: { x: rightEdge + 32, y: 30 }, style: { width: defaultWidth }, data: { widthMode: 'auto', modelId: model?.id || '', mediaId: selectedMedia, params: modelDefaults(model), jobId: null }, selected: true };
+    autoFit.current = true; fitTargets.current = [node.id];
     setNodes(previous => [...previous.map(item => ({ ...item, selected: false })), node]);
-    setTimeout(() => flow.fitView({ nodes: [{ id: node.id }], padding: 0.12, minZoom: READABLE_ZOOM, maxZoom: 1, duration: 250 }), 80);
+    setTimeout(() => fitReadable(), 80);
   }
   function duplicateNode(id) {
     if (nodes.length >= 24) return notify('畫布最多允許 24 個比較區塊。', true);
     const node = nodes.find(item => item.id === id); if (!node) return;
-    const copy = { ...node, id: uid(), selected: true, position: { x: node.position.x + Number(node.style?.width || 420) + 28, y: node.position.y + 24 }, data: { ...node.data, params: { ...node.data.params }, jobId: null } };
-    setNodes(previous => [...previous.map(item => ({ ...item, selected: false })), copy]); setTimeout(() => flow.fitView({ nodes: [{ id: copy.id }], padding: 0.12, minZoom: READABLE_ZOOM, maxZoom: 1, duration: 200 }), 80);
+    const copy = { ...node, id: uid(), measured: undefined, width: undefined, height: undefined, selected: true, position: { x: node.position.x + placementWidth(node) + 28, y: node.position.y + 24 }, data: { ...node.data, params: { ...node.data.params }, jobId: null } };
+    autoFit.current = true; fitTargets.current = [copy.id];
+    setNodes(previous => [...previous.map(item => ({ ...item, selected: false })), copy]); setTimeout(() => fitReadable(), 80);
+  }
+  function resetNodeSize(id) {
+    autoFit.current = true; fitTargets.current = [id];
+    setNodes(previous => previous.map(node => node.id === id ? { ...node, width: undefined, height: undefined, initialHeight: undefined, style: { width: defaultWidth }, data: { ...node.data, widthMode: 'auto' } } : node));
+    setTimeout(() => fitReadable(), 80);
   }
   function removeNode(id) {
     const node = nodes.find(item => item.id === id), job = jobs.find(item => item.id === node?.data.jobId);
     if (activeJob(job)) { notify('任務仍在執行，請先取消再移除區塊。', true); return; }
+    if (fitTargets.current) { fitTargets.current = fitTargets.current.filter(target => target !== id); if (!fitTargets.current.length) fitTargets.current = null; }
     setNodes(previous => previous.filter(item => item.id !== id));
   }
   async function runNode(id) {
@@ -167,7 +206,7 @@ function CanvasInner(props) {
     catch (error) { notify(error.message, true); }
     finally { setClearingCache(false); }
   }
-  function arrange() { let offset = 28; setNodes(previous => previous.map(node => { const next = { ...node, position: { x: offset, y: 30 } }; offset += Number(node.style?.width || 420) + 32; return next; })); setTimeout(() => fitReadable(), 80); }
+  function arrange() { autoFit.current = true; fitTargets.current = null; let offset = 28; setNodes(previous => previous.map(node => { const next = { ...node, position: { x: offset, y: 30 } }; offset += placementWidth(node) + 32; return next; })); setTimeout(() => fitReadable(), 80); }
   function exportCanvas() {
     const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), nodes, selectedMedia, sharedInput }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url; anchor.download = `vision-lab-${new Date().toISOString().slice(0, 10)}.json`; anchor.click(); URL.revokeObjectURL(url); notify('已匯出畫布配置，不包含媒體與模型權重。');
@@ -175,20 +214,20 @@ function CanvasInner(props) {
   async function importCanvas(event) {
     const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
     if (file.size > 2 * 1024 * 1024) return notify('配置檔不可超過 2 MB。', true);
-    try { const content = JSON.parse(await file.text()); if (content.version !== 1) throw new Error('不支援的畫布版本。'); const restored = safeNodes(content.nodes, models); setNodes(restored); setSharedInput(content.sharedInput !== false); if (media.some(item => item.id === content.selectedMedia)) setSelectedMedia(content.selectedMedia); notify('畫布已匯入。請確認目前素材與本機模型狀態。'); setTimeout(() => fitReadable(restored), 80); } catch (error) { notify(`無法匯入：${error.message}`, true); }
+    try { const content = JSON.parse(await file.text()); if (content.version !== 1) throw new Error('不支援的畫布版本。'); const restored = safeNodes(content.nodes, models); autoFit.current = true; fitTargets.current = null; setNodes(restored); setSharedInput(content.sharedInput !== false); if (media.some(item => item.id === content.selectedMedia)) setSelectedMedia(content.selectedMedia); notify('畫布已匯入。請確認目前素材與本機模型狀態。'); setTimeout(() => fitReadable(restored), 80); } catch (error) { notify(`無法匯入：${error.message}`, true); }
   }
   async function onUpload(event) { const files = Array.from(event.target.files || []); event.target.value = ''; if (!files.length) return; setUploading(true); try { for (const file of files) { if (file.size > 512 * 1024 * 1024) throw new Error(`${file.name} 超過 512 MB。`); const asset = await uploadMedia(file); setSelectedMedia(asset.id); } } catch (error) { notify(error.message, true); } finally { setUploading(false); } }
   const filtered = media.filter(item => (filter === 'all' || item.kind === filter) && item.name.toLowerCase().includes(query.toLowerCase()));
   const asset = media.find(item => item.id === selectedMedia);
-  const context = { models, media, jobs, system, confirmLicense, checkpoints, sharedInput, selectedMedia, clearingCache, updateNode, duplicateNode, removeNode, runNode, cancelJob, nodeOrder: nodes.map(node => node.id) };
+  const context = { models, media, jobs, system, confirmLicense, checkpoints, sharedInput, selectedMedia, clearingCache, updateNode, duplicateNode, removeNode, runNode, cancelJob, resetNodeSize, stopAutoFit, nodeOrder: nodes.map(node => node.id) };
   return <main className="inference-page">
     <div className="page-intro"><div><span className="eyebrow"><span/>INFERENCE PLAYGROUND</span><h1>一個畫布，多種可能<span className="accent-dot">。</span></h1><p>將模型並排，調整參數，直接比較影像與影片的辨識結果。</p></div><div className="intro-actions"><button className="button ghost" onClick={() => importInput.current?.click()}><ArrowUpFromLine size={15}/>匯入配置</button><button className="button secondary" onClick={exportCanvas}><ArrowDownToLine size={15}/>儲存畫布</button><input ref={importInput} type="file" accept=".json,application/json" hidden onChange={importCanvas}/></div></div>
     <div className="workspace-shell">
       <aside className="media-sidebar"><div className="panel-heading"><span><Layers2 size={16}/>素材庫</span><b>{media.length}</b></div><button className="upload-drop" onClick={() => fileInput.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle size={22} className="spin"/> : <Upload size={22}/>}<strong>{uploading ? '正在上傳素材' : '加入你的影像或影片'}</strong><span>JPG · PNG · WEBP · MP4 · MOV</span><small>每個檔案上限 512 MB</small></button><input type="file" ref={fileInput} accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/x-msvideo,video/webm" multiple hidden onChange={onUpload}/><div className="library-heading"><span>所有素材</span><small>{filtered.length} ITEMS</small></div><div className="media-filter"><button onClick={() => setFilter('all')} className={filter === 'all' ? 'active' : ''}>全部</button><button onClick={() => setFilter('image')} className={filter === 'image' ? 'active' : ''}><Image size={12}/>圖片</button><button onClick={() => setFilter('video')} className={filter === 'video' ? 'active' : ''}><Film size={12}/>影片</button></div><label className="search-input"><Search size={14}/><input placeholder="搜尋素材名稱" value={query} onChange={event => setQuery(event.target.value)}/></label><div className="media-grid">{filtered.map(item => <MediaTile key={item.id} item={item} selected={selectedMedia === item.id} onSelect={setSelectedMedia}/>)}{filtered.length === 0 && <p className="empty-text">沒有符合的素材</p>}</div><div className="media-selection"><span className="eyebrow">CURRENT INPUT</span><strong>{asset?.name || '尚未選擇素材'}</strong><span>{asset?.kind === 'video' ? '影片' : asset ? '圖片' : '從上方素材庫開始'}{asset?.width && asset?.height ? ` · ${asset.width} × ${asset.height}` : ''}</span>{asset && mediaTrainingUsage(asset).used && <small className="media-trained-note" title={mediaTrainingUsage(asset).title}>已用於訓練</small>}</div></aside>
       <section className="canvas-workspace"><div className="canvas-toolbar"><div className="canvas-title"><span className="canvas-dot"/>比較畫布 <b>{nodes.length}</b></div><label className="switch-label"><input type="checkbox" checked={sharedInput} onChange={event => setSharedInput(event.target.checked)}/><span className="switch"/>共享輸入</label><div className="toolbar-separator"/><button className="button ghost small clear-model-cache" disabled={clearingCache || startingAll || jobs.some(activeJob)} title={jobs.some(activeJob) ? '請等待執行中與排隊任務結束' : '釋放已載入的推論模型；下次執行會重新載入。'} onClick={clearModelCache}>{clearingCache ? <LoaderCircle className="spin" size={13}/> : <Trash2 size={13}/>}釋放模型</button><button className="button ghost small" disabled={!nodes.length || startingAll || clearingCache} onClick={runAll}>{startingAll ? <LoaderCircle className="spin" size={14}/> : <Play size={13}/>}全部執行</button><button className="button primary small" onClick={addNode}><Plus size={16}/>新增區塊</button></div>
-        <div className="flow-wrapper"><CanvasContext.Provider value={context}><ReactFlow nodes={nodes} edges={[]} onNodesChange={onNodesChange} nodeTypes={nodeTypes} fitView minZoom={0.25} maxZoom={1.6} fitViewOptions={{ padding: 0.08, minZoom: READABLE_ZOOM, maxZoom: 1, nodes: nodes.slice(0, 2).map(node => ({ id: node.id })) }} deleteKeyCode={null} proOptions={{ hideAttribution: true }} nodesConnectable={false} panOnScroll={false} zoomOnDoubleClick={false}><Background color="#39413e" gap={22} size={1}/></ReactFlow></CanvasContext.Provider>
+        <div className="flow-wrapper" ref={flowWrapper}><CanvasContext.Provider value={context}><ReactFlow nodes={nodes} edges={[]} onNodesChange={onNodesChange} nodeTypes={nodeTypes} minZoom={MIN_CANVAS_ZOOM} maxZoom={1.6} onMoveStart={event => { if (event) stopAutoFit(); }} onNodeDragStart={stopAutoFit} deleteKeyCode={null} proOptions={{ hideAttribution: true }} nodesConnectable={false} panOnScroll={false} zoomOnDoubleClick={false}><Background color="#39413e" gap={22} size={1}/></ReactFlow></CanvasContext.Provider>
         {!nodes.length && <div className="empty-canvas"><span className="empty-canvas-icon"><ScanLine size={35}/></span><h2>你的第一個比較，從這裡開始</h2><p>新增區塊，選擇一個本機模型來測試。</p><button className="button primary" onClick={addNode}><Plus size={16}/>新增推論區塊</button></div>}
-        <div className="canvas-bottom"><div className="canvas-controls"><button title="放大" aria-label="放大" onClick={() => flow.zoomIn({ duration: 150 })}><ZoomIn size={17}/></button><button title="縮小" aria-label="縮小" onClick={() => flow.zoomOut({ duration: 150 })}><ZoomOut size={17}/></button><i/><button title="適合畫面" aria-label="適合畫面" onClick={() => flow.fitView({ padding: 0.1, maxZoom: 1, duration: 200 })}><Expand size={17}/></button><button title="自動並排" aria-label="自動並排" onClick={arrange}><Layers2 size={17}/></button></div><span className="canvas-hint">拖曳標題移動區塊 · 滾輪縮放 · 點選邊角調整大小</span><span className="autosaved"><span/>自動儲存於此瀏覽器</span></div></div>
+        <div className="canvas-bottom"><div className="canvas-controls"><button title="放大" aria-label="放大" onClick={() => { stopAutoFit(); flow.zoomIn({ duration: 150 }); }}><ZoomIn size={17}/></button><button title="縮小" aria-label="縮小" onClick={() => { stopAutoFit(); flow.zoomOut({ duration: 150 }); }}><ZoomOut size={17}/></button><i/><button title="適合畫面" aria-label="適合畫面" onClick={() => { autoFit.current = true; fitTargets.current = nodes.map(node => node.id); fitReadable(); }}><Expand size={17}/></button><button title="自動並排" aria-label="自動並排" onClick={arrange}><Layers2 size={17}/></button></div><span className="canvas-hint">區塊隨內容增高 · 拖曳標題移動 · 邊角可調整尺寸</span><span className="autosaved"><span/>自動儲存於此瀏覽器</span></div></div>
       </section>
     </div>
   </main>;

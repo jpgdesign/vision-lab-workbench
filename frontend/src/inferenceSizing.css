@@ -1,0 +1,59 @@
+/* React Flow owns the width and optional minimum height. Content owns height,
+   so measured node dimensions include the result and its action footer. */
+.inference-node {
+  height: auto;
+  min-height: inherit;
+}
+
+.inference-node > .node-drag {
+  height: auto;
+  min-height: 59px;
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  gap: 10px;
+}
+.inference-node .node-heading,
+.inference-node .node-heading > div { min-width: 0; }
+.inference-node .node-heading strong { overflow-wrap: anywhere; }
+.inference-node .node-number,
+.inference-node .node-actions { flex-shrink: 0; }
+
+.inference-node > .node-config,
+.inference-node > .node-result,
+.inference-node > .inference-artifacts {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow: visible;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A stable, width-responsive preview keeps the complete image/video visible.
+   Absolute media children are contained by this naturally sized frame. */
+.inference-node > .preview-area {
+  flex: 0 0 auto;
+  aspect-ratio: 16 / 10;
+  min-height: 190px;
+}
+.inference-node > .preview-area img,
+.inference-node > .preview-area video { object-fit: contain; }
+
+.inference-node .prediction-list > span {
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.inference-node .prediction-list b { white-space: nowrap; }
+.inference-node .inference-artifacts a { max-width: 100%; overflow-wrap: anywhere; }
+
+.inference-node > .node-footer {
+  height: auto;
+  min-height: 54px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+  padding: 10px 15px;
+}
+.inference-node > .node-footer .button { flex-shrink: 0; }
