@@ -29,6 +29,7 @@ from starlette.concurrency import run_in_threadpool
 from .datasets import DatasetError, FORMATS, extract_zip_safely, media_kind, validate_dataset
 from .jobs import JobManager, write_json_atomic
 from .model_registry import FILES as MODEL_FILES, ModelRegistry, registry_runtime
+from .training_usage import TrainingUsageIndex
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SAMPLE_ROOT = APP_ROOT.parent / "vision_training_starter"
@@ -223,6 +224,10 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
     datasets = Registry(runtime / "datasets.json")
     manager = JobManager(runtime, APP_ROOT, command_factory=command_factory)
     model_registry = ModelRegistry(runtime, APP_ROOT)
+    training_usage = TrainingUsageIndex(manager.job_root)
+
+    def public_media_entries(entries):
+        return [_media_public(entry) for entry in training_usage.annotate(entries, manager.list())]
 
     def load_models():
         with registry_runtime(runtime):
@@ -375,7 +380,7 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
 
     @application.get("/api/media")
     def list_media():
-        return {"media": [_media_public(item) for item in media.list() if Path(item.get("path", "")).is_file()]}
+        return {"media": public_media_entries([item for item in media.list() if Path(item.get("path", "")).is_file()])}
 
     async def save_upload(file: UploadFile, path: Path, max_bytes: int) -> None:
         total = 0
@@ -410,7 +415,7 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
         try:
             entry = await run_in_threadpool(_new_media, path, "upload", filename, media_id)
             await run_in_threadpool(media.add, entry)
-            return _media_public(entry)
+            return (await run_in_threadpool(public_media_entries, [entry]))[0]
         except (DatasetError, OSError) as exc:
             path.unlink(missing_ok=True)
             raise HTTPException(422, str(exc)) from exc

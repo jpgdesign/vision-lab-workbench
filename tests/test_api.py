@@ -117,6 +117,31 @@ def upload_image(client):
     return result.json()
 
 
+def test_media_training_marker_uses_completed_train_content_not_name(api, tmp_path):
+    from backend.training_usage import record_training_inputs
+    client, app = api
+    train = tmp_path / "training.png"
+    train.write_bytes(png())
+    val = tmp_path / "validation.png"
+    Image.new("RGB", (16, 12), "blue").save(val)
+    request = {"kind": "training", "model_id": "detector", "params": {}, "dataset": {
+        "format": "imagefolder", "classes": ["food"], "details": {
+            "train_samples": [{"path": str(train), "label": 0}],
+            "val_samples": [{"path": str(val), "label": 0}]}}}
+    job = app.state.jobs.submit(request)
+    record_training_inputs(request, app.state.jobs.job_root / job["id"])
+    before = upload_image(client)
+    assert before["training_usage"] == {"used": False, "job_ids": []}
+    app.state.jobs.jobs[job["id"]]["status"] = "completed"
+    listed = {item["id"]: item for item in client.get("/api/media").json()["media"]}
+    assert listed[before["id"]]["training_usage"] == {"used": True, "job_ids": [job["id"]]}
+    assert "path" not in listed[before["id"]]
+    renamed = client.post("/api/media", files={"file": ("renamed-copy.png", png(), "image/png")}).json()
+    assert renamed["training_usage"]["used"] is True
+    validation = client.post("/api/media", files={"file": ("便當訓練集_fake.png", val.read_bytes(), "image/png")}).json()
+    assert validation["training_usage"] == {"used": False, "job_ids": []}
+
+
 def test_inference_cache_clear_is_idle_only_and_keeps_jobs_and_media(api):
     client, app = api
     item = upload_image(client)

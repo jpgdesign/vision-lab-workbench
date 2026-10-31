@@ -7,6 +7,7 @@ import ModelLibrary from './ModelLibrary';
 import LiveCamera from './LiveCamera';
 import { applySystemDevices } from './systemDevices';
 import { JobPoller, mergeJobSnapshot, mergeJobUpdate } from './jobPolling';
+import { completedTrainingSignature, mergeMediaUsageSnapshot } from './mediaTrainingUsage';
 
 export default function App() {
   const [page, setPage] = useState('inference');
@@ -14,6 +15,7 @@ export default function App() {
   const [media, setMedia] = useState([]);
   const [jobs, setJobs] = useState([]);
   const jobsRef = useRef([]), jobPoller = useRef(null);
+  const mediaTrainingSignature = useRef(null);
   const [datasets, setDatasets] = useState([]);
   const [health, setHealth] = useState(null);
   const [system, setSystem] = useState(null), [checkpoints, setCheckpoints] = useState([]);
@@ -52,8 +54,13 @@ export default function App() {
     let alive = true, timer;
     async function poll() {
       try {
-        const [healthData, checkpointData] = await Promise.all([api('/health'), api('/checkpoints')]);
-        if (alive) { setHealth(healthData); setCheckpoints(checkpointData.checkpoints || []); setConnectionError(''); }
+        const trainingSignature = completedTrainingSignature(jobsRef.current);
+        const refreshUsage = trainingSignature !== mediaTrainingSignature.current;
+        const [healthData, checkpointData, mediaData] = await Promise.all([api('/health'), api('/checkpoints'), refreshUsage ? api('/media') : Promise.resolve(null)]);
+        if (alive) {
+          setHealth(healthData); setCheckpoints(checkpointData.checkpoints || []); setConnectionError('');
+          if (mediaData) { setMedia(previous => mergeMediaUsageSnapshot(previous, mediaData.media || [])); mediaTrainingSignature.current = trainingSignature; }
+        }
       } catch (error) { if (alive) setConnectionError(error.message); }
       if (alive) timer = setTimeout(poll, 2200);
     }

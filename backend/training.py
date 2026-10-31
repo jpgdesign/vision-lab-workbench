@@ -349,6 +349,13 @@ def run_training(request: dict, output_dir: str | Path, emit: Emit) -> dict:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     os.environ["YOLO_OFFLINE"] = "true"
+    if not request.get("_training_inputs_recorded"):
+        from .training_usage import record_training_inputs
+        emit({"event": "log", "message": "記錄實際 train 切分的內容指紋，供推論選圖標示已訓練影像。"})
+        record_training_inputs(request, output)
+        # The internal dual-branch child receives this flag and must not create
+        # a second provenance snapshot of the same original training inputs.
+        request = {**request, "_training_inputs_recorded": True}
     from .expansion import prepare_expansion
     request = prepare_expansion(request, output, emit)
     _write_json(output / "training_config.json", {"model_id": model_id, "params": params,

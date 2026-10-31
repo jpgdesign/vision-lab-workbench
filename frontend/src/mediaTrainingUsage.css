@@ -1,0 +1,7 @@
+.media-item.is-training-media.selected > div { border-color: #ef827d; box-shadow: 0 0 0 1px #ef827d; }
+.media-item.is-training-media.selected .media-check { background: #ef827d; color: #3e1210; }
+.media-item.is-training-media.selected > span { color: #f2b9b5; }
+.media-item.is-training-media:focus-visible { outline-color: #ef827d; }
+.media-trained-badge { position: absolute; left: 3px; bottom: 3px; border: 1px solid #b46a65; border-radius: 3px; background: #492a28eb; color: #f4c0bc; font-size: 8px; line-height: 1.5; padding: 1px 4px; font-weight: 500; }
+.media-selection .media-trained-note { display: inline-block; color: #f0a9a5; font-size: 10px; border: 1px solid #68403b; background: #352420; border-radius: 4px; padding: 3px 6px; margin-top: 8px; }
+@media (max-width: 640px) { .media-trained-badge { font-size: 7px; padding: 0 2px; } .media-selection .media-trained-note { font-size: 7px; padding: 2px 3px; } }
