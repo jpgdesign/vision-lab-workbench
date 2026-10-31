@@ -1,0 +1,49 @@
+.training-mode-help-trigger {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  border: 1px solid #4a6856; border-radius: 6px; padding: 6px 9px;
+  background: #20382a; color: #c8e6d3; font: inherit; font-size: 12px; line-height: 1.4;
+  cursor: pointer; transition: background 150ms, border-color 150ms;
+}
+.training-mode-help-trigger:hover, .training-mode-help-trigger[aria-expanded="true"] { background: #2a4735; border-color: #8db99e; }
+.training-mode-help-trigger:focus-visible, .training-mode-help-card button:focus-visible { outline: 2px solid #b7e7ca; outline-offset: 3px; }
+.training-mode-help-card {
+  position: fixed; z-index: 1600; width: min(620px, calc(100vw - 24px)); max-height: calc(100dvh - 24px);
+  box-sizing: border-box; overflow: auto; overscroll-behavior: contain;
+  border: 1px solid #668d73; border-radius: 13px; background: #17271e; color: #d3e4d9;
+  box-shadow: 0 18px 55px #0009; font-size: 13px; line-height: 1.7; text-align: left;
+}
+.training-mode-help-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 17px 18px 13px; border-bottom: 1px solid #395342; }
+.training-mode-help-header h3 { margin: 0; color: #e0f2e6; font-size: 15px; font-weight: 600; }
+.training-mode-help-header p { margin: 4px 0 0; color: #a6c1b0; font-size: 12px; }
+.training-mode-help-actions { display: flex; align-items: center; gap: 8px; }
+.training-mode-help-actions > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: #b9d9c5; font-size: 11px; }
+.training-mode-help-actions > button { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 1px solid #46614e; border-radius: 6px; background: #20362a; color: #cee8d7; cursor: pointer; }
+.training-mode-help-actions > button:hover { background: #34543f; }
+.training-mode-help-choices { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; padding: 14px 18px 0; }
+.training-mode-help-choices > button {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; min-height: 58px;
+  border: 1px solid #435b4b; border-radius: 7px; padding: 8px 9px; background: #122017;
+  color: #bfd7c8; font: inherit; font-size: 12px; line-height: 1.5; text-align: left; cursor: pointer;
+  transition: background 150ms, border-color 150ms;
+}
+.training-mode-help-choices > button:hover, .training-mode-help-choices > button.active { border-color: #9acbae; background: #2c4936; color: #e4f6eb; }
+.training-mode-help-choices small { display: inline-flex; align-items: center; gap: 3px; color: #c0e5cc; font-size: 10px; }
+.training-mode-help-detail { padding: 17px 18px 6px; }
+.training-mode-help-detail h4 { margin: 0 0 6px; color: #dff1e6; font-size: 15px; font-weight: 600; }
+.training-mode-help-summary { margin: 0 0 13px; color: #b8d6c3; }
+.training-mode-help-detail dl { margin: 0; }
+.training-mode-help-detail dl > div { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid #334b3c; }
+.training-mode-help-detail dt { color: #9fbfa9; font-size: 12px; }
+.training-mode-help-detail dd { margin: 0; color: #d6e7dc; overflow-wrap: anywhere; }
+.training-mode-help-note { display: flex; align-items: flex-start; gap: 8px; margin: 6px 18px; padding: 11px 12px; border: 1px solid #52674c; border-radius: 7px; background: #283425; color: #d4dfbf; font-size: 12px; line-height: 1.7; }
+.training-mode-help-note > svg { flex-shrink: 0; margin-top: 3px; }
+.training-mode-help-card footer { padding: 11px 18px 15px; color: #a3bdad; font-size: 11px; }
+@media (max-width: 520px) {
+  .training-mode-help-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-mode-help-choices > button { min-height: 47px; }
+  .training-mode-help-detail dl > div { grid-template-columns: 1fr; gap: 3px; }
+  .training-mode-help-header, .training-mode-help-detail { padding-left: 14px; padding-right: 14px; }
+  .training-mode-help-choices { padding-left: 14px; padding-right: 14px; }
+  .training-mode-help-actions > span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .training-mode-help-trigger, .training-mode-help-choices > button { transition: none; } }

@@ -6,8 +6,13 @@ import { deviceAvailable } from './systemDevices';
 import { checkpointChoices } from './checkpoints';
 import { canTrainWithWeights, classAliases, effectiveTrainingParams, freshExpansionPreview, inferenceOnlyCheckpoint, isExpansionMode, requiresReplay, trainingModes, trainingRequest } from './trainingExpansion';
 import { ClassAliases, ExpansionPreview, ReplayDataset, RetentionSummary } from './TrainingExpansionPanel';
+import { TrainingModeHelp } from './TrainingModeHelp';
 
 const formatNames = { yolo_detection: 'YOLO Detection', coco_detection: 'COCO Detection', imagefolder: 'ImageFolder', video_csv: 'Video CSV' };
+const trainingModeNotes = {
+  grounding_dino_base: 'Grounding DINO 例外：推論類別由文字提示指定。微調使用資料集的類別提示，擴充加入新舊提示範圍，並非增加固定分類行；其他開放詞彙能力未經保留驗證。',
+  dinov3_7b: 'DINOv3 原始權重沒有分類頭。第一次監督訓練請用標準微調；擴充類別時，需選擇已有分類頭的微調權重。',
+};
 const parameterInfo = {
   epochs: ['訓練輪數', 1, 10000, 1], batch_size: ['批次大小', 1, 1024, 1], imgsz: ['輸入尺寸', 32, 4096, 16], lr: ['學習率', 0.00000001, 1, 0.0001], weight_decay: ['權重衰減', 0, 1, 0.0001], freeze: ['凍結層數', 0, 1000, 1], patience: ['提前停止耐心值', 0, 10000, 1], seed: ['隨機種子', 0, 4294967295, 1], workers: ['資料載入程序', 0, 32, 1], accumulate: ['梯度累積步數', 1, 1024, 1], label_smoothing: ['標籤平滑', 0, 1, 0.01], gradient_clip: ['梯度裁切', 0, 100, 0.1], momentum: ['動量', 0, 1, 0.01], warmup_epochs: ['暖身輪數', 0, 1000, 1], box: ['框回歸損失權重', 0, 100, 0.1], cls: ['分類損失權重', 0, 100, 0.1], dfl: ['DFL 損失權重', 0, 100, 0.1], num_frames: ['每段影格數', 1, 128, 1], frame_stride: ['影格取樣間距', 1, 64, 1], step_size: ['衰減間隔', 1, 1000, 1], gamma: ['衰減倍率', 0, 1, 0.01], focal_gamma: ['Focal γ', 0, 10, 0.1], max_batches: ['每輪最大批次', 0, 100000, 1], max_train_batches: ['每輪最多訓練批次', 0, 100000, 1], max_val_batches: ['每輪最多驗證批次', 0, 100000, 1], dropout: ['Dropout', 0, 1, 0.01], max_grad_norm: ['梯度裁切', 0, 100, 0.1], val_every: ['驗證間隔', 1, 10000, 1]
 };
@@ -242,7 +247,7 @@ export default function Training({ models, jobs, datasets, setDatasets, checkpoi
         {dataset && <div className="dataset-success"><div><span><Check size={15}/>資料驗證通過</span><strong>{dataset.name}</strong></div><div className="dataset-stats"><span><b>{dataset.train_count}</b>訓練樣本</span><span><b>{dataset.val_count}</b>驗證樣本</span><span><b>{dataset.num_classes || dataset.classes?.length}</b>類別</span></div><p>{dataset.classes?.slice(0, 12).join(' · ')}{dataset.classes?.length > 12 ? ` · +${dataset.classes.length - 12}` : ''}</p></div>}
       </div></section>
       <section className="config-section"><div className="section-heading"><span className="step-number">03</span><div><h2>定義訓練方式</h2><p>只顯示這個模型實際支援的超參數與最佳化方法。</p></div><Gauge size={19}/></div><div className="config-body">
-        <section className="training-mode"><label className="field"><span>類別學習方式</span><select value={trainingMode} disabled={!model?.training_supported || submitting || replayValidating} onChange={event => setTrainingMode(event.target.value)}>{Object.entries(trainingModes).filter(([value]) => value === 'standard' || capability.training_modes?.includes(value)).map(([value, info]) => <option key={value} value={value}>{info.label}</option>)}</select></label>
+        <section className="training-mode"><div className="field"><div className="training-mode-label"><label htmlFor="training-mode-select">類別學習方式</label><TrainingModeHelp mode={trainingMode} note={trainingModeNotes[model?.id]}/></div><select id="training-mode-select" value={trainingMode} disabled={!model?.training_supported || submitting || replayValidating} onChange={event => setTrainingMode(event.target.value)}>{Object.entries(trainingModes).filter(([value]) => value === 'standard' || capability.training_modes?.includes(value)).map(([value, info]) => <option key={value} value={value}>{info.label}</option>)}</select></div>
           <p>{trainingModes[trainingMode]?.description}</p>
           {frozenExpansion && <p className="training-strategy-lock">{model?.task === 'detection' ? '本模式固定使用凍結骨幹；YOLO 自動凍結完整骨幹（freeze = 0）。' : '本模式固定使用只訓練分類頭。'}這不會凍結原分類頭，也不保證原類別準確率。</p>}
           {trainingMode === 'dual_branch' && <p>原分支在相同輸入與參數下保留原預測；新增分支獨立學習。合併畫面的框重疊、排序與顯示結果仍可能不同，目前請使用圖片／影片推論比較。</p>}
