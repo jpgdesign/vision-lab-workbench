@@ -107,7 +107,7 @@ def test_subprocess_is_bounded_offline_cpu_and_checkpoint_source_overrides_base(
     command, options, payload = calls[0]
     assert command == [sys.executable, "-m", "backend.grounding_preflight", "--inspect"]
     assert options["timeout"] == 90
-    assert options["env"]["CUDA_VISIBLE_DEVICES"] == ""
+    assert options["env"]["CUDA_VISIBLE_DEVICES"] == "-1"
     assert options["env"]["HF_HUB_OFFLINE"] == "1"
     assert options["env"]["TRANSFORMERS_OFFLINE"] == "1"
     assert payload["folder"] == str(checkpoint.resolve())

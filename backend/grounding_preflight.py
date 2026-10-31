@@ -77,7 +77,7 @@ def _cached_prompt_plan(folder, signature, classes):
         input=json.dumps({"folder": folder, "classes": list(classes)}, ensure_ascii=False),
         cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, encoding="utf-8",
         timeout=TIMEOUT_SECONDS, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        env={**os.environ, "CUDA_VISIBLE_DEVICES": "", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
+        env={**os.environ, "CUDA_VISIBLE_DEVICES": "-1", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
              "TOKENIZERS_PARALLELISM": "false", "PYTHONUTF8": "1"},
     )
     lines = [line[len(RESULT_PREFIX):] for line in result.stdout.splitlines() if line.startswith(RESULT_PREFIX)]
