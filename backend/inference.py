@@ -9,6 +9,7 @@ import time
 import traceback
 
 from .catalog import WEIGHTS
+from .segmentation import SEGMENTATION_IDS, attach_mask, overlay_masks, prediction_summaries
 
 ASSETS = Path(__file__).parent / "assets"
 
@@ -176,12 +177,12 @@ def read_clip(path, num_frames, start_seconds, duration):
 
 def draw_predictions(rgb, predictions, title=None):
     from PIL import Image, ImageDraw, ImageFont
-    image = Image.fromarray(rgb)
-    draw = ImageDraw.Draw(image)
     font_path = Path("C:/Windows/Fonts/msjh.ttc")
-    size = max(14, round(min(image.size) / 38))
+    size = max(14, round(min(rgb.shape[:2]) / 38))
     font = ImageFont.truetype(str(font_path), size) if font_path.is_file() else ImageFont.load_default()
     colors = ["#63e5b3", "#83b8ff", "#f2c66c", "#e2a5f9", "#ff9a91"]
+    image = Image.fromarray(overlay_masks(rgb, predictions, colors, max(1, size // 10)))
+    draw = ImageDraw.Draw(image)
     for index, prediction in enumerate(predictions):
         if "box" not in prediction:
             continue
@@ -212,15 +213,16 @@ def validate_yolo_architecture(model, model_id):
     """Check loaded architecture, including renamed .pt files, before use."""
     import re
     config = getattr(getattr(model, "model", None), "yaml", None)
-    if not isinstance(config, dict) or getattr(model, "task", "detect") != "detect":
-        raise ValueError("權重沒有可驗證的 YOLO 物件偵測架構。")
+    expected_task = "segment" if model_id in SEGMENTATION_IDS else "detect"
+    if not isinstance(config, dict) or getattr(model, "task", "detect") != expected_task:
+        raise ValueError(f"權重任務與所選 YOLO 不符：需要 {expected_task}；偵測與分割不能共用權重。")
     modules = {layer[2] if isinstance(layer[2], str) else getattr(layer[2], "__name__", "")
                for layer in config.get("backbone", []) + config.get("head", []) if isinstance(layer, (list, tuple)) and len(layer) >= 3}
     family = "12" if "A2C2f" in modules else "26" if config.get("end2end") is True and config.get("reg_max") == 1 and "C2PSA" in modules else None
-    expected = "12" if model_id in {"yolov12x", "yolo12x"} else "26"
+    expected = "12" if model_id in {"yolov12x", "yolo12x", "yolov12x_seg"} else "26"
     scale = config.get("scale")
     if not scale:
-        match = re.search(r"yolo(?:v)?(?:12|26)([nslmx])(?:\.|$)", str(config.get("yaml_file", "")).lower())
+        match = re.search(r"yolo(?:v)?(?:12|26)([nslmx])(?:-seg)?(?:\.|$)", str(config.get("yaml_file", "")).lower())
         scale = match.group(1) if match else None
     if not scale and config.get("depth_multiple") == 1.0 and config.get("width_multiple") == 1.5:
         scale = "x"
@@ -233,17 +235,31 @@ def create_detector(model_id, params, device, checkpoint_path=None, model_weight
     from .model_registry import validate_checkpoint, validate_weight
     path = (validate_checkpoint(model_id, checkpoint_path) if checkpoint_path else
             validate_weight(model_id, model_weight_path) if model_weight_path else WEIGHTS[model_id])
-    if model_id in ("yolov12x", "yolo26x"):
+    if model_id in ("yolov12x", "yolo26x", "yolov12x_seg", "yolo26x_seg"):
         from ultralytics import YOLO
         model = YOLO(str(path))
+        if model_id == "yolov12x_seg":
+            from .yolo12_seg_compat import prepare_yolo12_seg_model
+            prepare_yolo12_seg_model(model)
         validate_yolo_architecture(model, model_id)
         def predict(image, inference_params=None):
             current = params if inference_params is None else inference_params
             kwargs = {key: current[key] for key in ("conf", "imgsz", "max_det", "iou") if key in current}
+            if model_id in SEGMENTATION_IDS:
+                kwargs["retina_masks"] = True
             result = model.predict(image, device=device, verbose=False, **kwargs)[0]
-            return [{"label": result.names[int(cls)], "score": float(score), "box": box.tolist()}
-                    for box, score, cls in zip(result.boxes.xyxy.cpu(), result.boxes.conf.cpu(), result.boxes.cls.cpu())]
+            predictions = [{"label": result.names[int(cls)], "score": float(score), "box": box.tolist()}
+                           for box, score, cls in zip(result.boxes.xyxy.cpu(), result.boxes.conf.cpu(), result.boxes.cls.cpu())]
+            if model_id in SEGMENTATION_IDS and predictions:
+                if result.masks is None or len(result.masks.data) != len(predictions):
+                    raise ValueError("YOLO 分割結果缺少物件遮罩。")
+                masks = result.masks.data.cpu().numpy()
+                predictions = [attach_mask(prediction, mask, image.size) for prediction, mask in zip(predictions, masks)]
+            return predictions
         return predict
+    if model_id == "rf_detr_seg_2xl":
+        from .segmentation import create_rf_seg_predictor
+        return create_rf_seg_predictor(path, params, device)
     if model_id == "grounding_dino_base":
         from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
         source_dir = path if checkpoint_path else path.parent
@@ -321,8 +337,10 @@ def run_detection(request, output, emit, device, *, predict=None):
         result_path = output / "result.png"
         draw_predictions(np.asarray(image), predictions).save(result_path)
         (output / "predictions.json").write_text(json.dumps(predictions, ensure_ascii=False, indent=2), encoding="utf-8")
-        return {"media_path": str(result_path), "media_kind": "image", "predictions": predictions,
-                "inference_ms": round(elapsed, 2), "frames": 1, "summary": f"偵測到 {len(predictions)} 個物件",
+        segmentation = request["model_id"] in SEGMENTATION_IDS
+        return {"media_path": str(result_path), "media_kind": "image", "predictions": prediction_summaries(predictions),
+                "task": "segmentation" if segmentation else "detection",
+                "inference_ms": round(elapsed, 2), "frames": 1, "summary": f"{'分割' if segmentation else '偵測'}到 {len(predictions)} 個物件",
                 "artifacts": {"predictions": str(output / "predictions.json")}}
     capture = cv2.VideoCapture(str(source))
     writer = None
@@ -356,7 +374,7 @@ def run_detection(request, output, emit, device, *, predict=None):
                     writer = cv2.VideoWriter(str(raw_path), cv2.VideoWriter_fourcc(*"mp4v"), fps / stride, annotated.size)
                     if not writer.isOpened():
                         raise RuntimeError("無法建立影片輸出檔")
-                    preview = predictions
+                    preview = prediction_summaries(predictions)
                     annotated.save(output / "preview.jpg")
                 writer.write(cv2.cvtColor(np.asarray(annotated), cv2.COLOR_RGB2BGR))
                 log.write(json.dumps({"frame": current, "seconds": current / fps, "predictions": predictions}, ensure_ascii=False) + "\n")
@@ -373,6 +391,7 @@ def run_detection(request, output, emit, device, *, predict=None):
         h264_video(raw_path, final_path)
         truncated = frame_index < total
         return {"media_path": str(final_path), "media_kind": "video", "predictions": preview,
+                "task": "segmentation" if request["model_id"] in SEGMENTATION_IDS else "detection",
                 "inference_ms": round(sum(times) / len(times), 2), "frames": count,
                 "summary": f"完成 {count} 個影格；每 {stride} 幀取樣一次" + ("（已達設定上限，未處理全片）" if truncated else ""),
                 "artifacts": {"predictions": str(output / "predictions.jsonl"), "preview": str(output / "preview.jpg")}}
@@ -436,7 +455,7 @@ def run_action(request, output, emit, device, *, loaded_model=None):
             "artifacts": {"predictions": str(output / "predictions.json"), "preview": str(output / "preview.jpg")}}
 
 
-DETECTOR_IDS = {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"}
+DETECTOR_IDS = {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"} | SEGMENTATION_IDS
 
 
 def create_dinov3_model(device="cpu", checkpoint_path=None, model_weight_path=None):

@@ -15,15 +15,19 @@ import uuid
 APP_ROOT = Path(__file__).resolve().parents[1]
 FILES = {
     "yolov12x": ("model_weights", "yolo12x.pt"),
+    "yolov12x_seg": ("model_weights", "yolov12x-seg.pt"),
     "yolo26x": ("model_weights", "yolo26x.pt"),
+    "yolo26x_seg": ("model_weights", "yolo26x-seg.pt"),
     "grounding_dino_base": ("model_weights", "model.safetensors"),
     "rf_detr_2xl": ("model_weights", "rf-detr-xxlarge.pth"),
+    "rf_detr_seg_2xl": ("model_weights", "rf-detr-seg-xxlarge.pt"),
     "vivit_base_k400": ("action_model_weights", "pytorch_model.bin"),
     "videomaev2_giant_k710": ("action_model_weights", "vit_g_hybrid_pt_1200e_k710_ft.pth"),
     "slowfast_r101_8x8": ("action_model_weights", "SLOWFAST_8x8_R101.pyth"),
     "x3d_l": ("action_model_weights", "X3D_L.pyth"),
     "dinov3_7b": ("model_weights", "model-00001-of-00006.safetensors"),
 }
+SEGMENTATION_IDS = {"yolov12x_seg", "yolo26x_seg", "rf_detr_seg_2xl"}
 HF_TYPES = {"grounding_dino_base": "grounding-dino", "vivit_base_k400": "vivit", "dinov3_7b": "dinov3_vit"}
 MAX_ROOTS, MAX_FILES, MAX_DEPTH = 12, 10000, 6
 _runtime = ContextVar("model_registry_runtime", default=None)
@@ -137,6 +141,8 @@ def validate_weight(model_id: str, value) -> Path:
 def validate_checkpoint(model_id: str, value) -> Path:
     if model_id not in FILES:
         raise ValueError("此模型尚未提供微調權重接頭。")
+    if model_id in SEGMENTATION_IDS:
+        raise ValueError("分割微調權重尚未接入；請在模型檔案管理綁定相容的分割權重，不能選用物件偵測 checkpoint。")
     path = _absolute(value)
     from .dual_branch import is_bundle, validate_bundle
     if is_bundle(path):

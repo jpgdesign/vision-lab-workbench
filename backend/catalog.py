@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 
 from .model_licenses import RF_DETR_LICENSE_URL, is_model_license_accepted
-from .model_registry import WeightPaths
+from .model_registry import SEGMENTATION_IDS, WeightPaths
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = APP_ROOT.parent
@@ -29,6 +29,11 @@ def param(key, label, default, *, options=None, minimum=None, maximum=None, step
 DEVICE = param("device", "運算裝置", "auto", options=["auto", "cuda:0", "cpu"])
 VIDEO_PARAMS = [param("frame_stride", "影片每幾幀取樣一次", 2, minimum=1, maximum=60, step=1),
                 param("max_frames", "影片最多處理幀數", 300, minimum=1, maximum=3000, step=1)]
+MODEL_FAMILIES = {
+    "yolov12x": ("yolov12", "YOLOv12x"), "yolov12x_seg": ("yolov12", "YOLOv12x"),
+    "yolo26x": ("yolo26", "YOLO26x"), "yolo26x_seg": ("yolo26", "YOLO26x"),
+    "rf_detr_2xl": ("rf_detr", "RF-DETR"), "rf_detr_seg_2xl": ("rf_detr", "RF-DETR"),
+}
 
 
 def get_models():
@@ -39,9 +44,12 @@ def get_models():
     models = []
     definitions = [
         ("yolov12x", "YOLOv12x", "detection", "ultralytics", "Attention 物件偵測"),
+        ("yolov12x_seg", "YOLOv12x Seg", "segmentation", "ultralytics", "Attention 實例分割，使用獨立分割權重"),
         ("yolo26x", "YOLO26x", "detection", "ultralytics", "即時物件偵測"),
+        ("yolo26x_seg", "YOLO26x Seg", "segmentation", "ultralytics", "實例分割，使用獨立分割權重"),
         ("grounding_dino_base", "Grounding DINO Base", "detection", "transformers", "以文字指定目標的開放詞彙偵測"),
         ("rf_detr_2xl", "RF-DETR 2XL", "detection", "rfdetr_plus", "需確認 PML 授權後使用"),
+        ("rf_detr_seg_2xl", "RF-DETR Seg 2XL", "segmentation", "rfdetr", "Apache-2.0 實例分割，使用獨立分割權重"),
         ("vivit_base_k400", "ViViT Base", "action", "transformers", "Kinetics-400 · 32 幀"),
         ("x3d_l", "X3D-L", "action", "pytorchvideo", "Kinetics-400 · 16 幀"),
         ("slowfast_r101_8x8", "SlowFast R101", "action", "pytorchvideo", "Kinetics-400 · 快慢雙路徑"),
@@ -62,11 +70,11 @@ def get_models():
         available = path.is_file() and environment_available and not weight_error
         reason = "" if available else (weight_error or "找不到完整本機權重；請掃描或綁定模型路徑。" if not path.is_file() else "執行環境尚未安裝完成，請執行 setup.ps1")
         params = [deepcopy(device)]
-        if model_id in ("yolov12x", "yolo26x"):
+        if model_id in ("yolov12x", "yolo26x", "yolov12x_seg", "yolo26x_seg"):
             params += [param("conf", "信心閾值", 0.25, minimum=0.01, maximum=0.99, step=0.01),
                        param("imgsz", "輸入邊長", 640, options=[320, 480, 640, 960, 1280]),
                        param("max_det", "最多偵測物件", 100, minimum=1, maximum=300, step=1)]
-            if model_id == "yolov12x":
+            if model_id in ("yolov12x", "yolov12x_seg"):
                 params += [param("iou", "NMS IoU 閾值", 0.7, minimum=0.1, maximum=0.95, step=0.05)]
             params += deepcopy(VIDEO_PARAMS)
         elif model_id == "grounding_dino_base":
@@ -76,6 +84,8 @@ def get_models():
         elif model_id == "rf_detr_2xl":
             params += [param("conf", "信心閾值", 0.3, minimum=0.01, maximum=0.99, step=0.01),
                        param("accept_platform_license", "我已閱讀 PML 1.0 並確認具備所需使用授權", license_accepted)] + deepcopy(VIDEO_PARAMS)
+        elif model_id == "rf_detr_seg_2xl":
+            params += [param("conf", "信心閾值", 0.3, minimum=0.01, maximum=0.99, step=0.01)] + deepcopy(VIDEO_PARAMS)
         elif task == "action":
             params += [param("num_clips", "均勻取樣片段數", 3, minimum=1, maximum=16, step=1),
                        param("clip_seconds", "每段秒數", 4.0, minimum=0.5, maximum=16.0, step=0.5),
@@ -88,15 +98,18 @@ def get_models():
         training.setdefault("supported_params", list(training.get("defaults", {})))
         training_supported = bool(training.get("dataset_formats"))
         if not training_supported:
-            training["unavailable_reason"] = {
+            training["unavailable_reason"] = ("目前已接入分割推論，分割微調尚未接入。分割訓練需要多邊形或遮罩標註，不能直接使用只有物件框的資料集。" if model_id in SEGMENTATION_IDS else {
                 "rf_detr_2xl": "工作台尚未接入 RF-DETR 的資料轉換、訓練驗證與微調權重回測流程；模型本身可以微調。",
                 "grounding_dino_base": "工作台尚未接入 Grounding DINO 的文字與框標註配對、訓練驗證及微調權重回測流程；模型本身可以微調。",
                 "dinov3_7b": "工作台尚未建立 DINOv3 的微調流程。",
-            }.get(model_id, "工作台尚未接入此模型的微調流程。")
+            }.get(model_id, "工作台尚未接入此模型的微調流程。"))
+        family_id, family_name = MODEL_FAMILIES.get(model_id, (model_id, name))
         models.append({"id": model_id, "name": name, "task": task, "description": description,
+                       "family_id": family_id, "family_name": family_name,
                        "weight_path": str(path), "weight_bytes": path.stat().st_size if path.is_file() else 0,
                        "available": available, "environment_available": environment_available, "reason": reason,
                        "inference_supported": True, "training_supported": training_supported,
+                       "training_reason": training.get("unavailable_reason", ""),
                        "capabilities": {"input_types": ["video"] if task == "action" else ["image", "video"],
                                         "inference_params": params, "training": training},
                        "license_accepted": license_accepted,

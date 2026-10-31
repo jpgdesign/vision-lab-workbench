@@ -33,13 +33,20 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 |---|---|---|---|---|
 | YOLOv12x (`yolov12x`) | 物件偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
 | YOLO26x (`yolo26x`) | 物件偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
+| YOLOv12x-Seg (`yolov12x_seg`) | 實例分割 | 支援 | 分割微調尚未接入 | — |
+| YOLO26x-Seg (`yolo26x_seg`) | 實例分割 | 支援 | 分割微調尚未接入 | — |
 | Grounding DINO Base (`grounding_dino_base`) | 文字指定目標偵測 | 支援 | 支援；以舊資料或指定名稱定義提示範圍 | YOLO Detection、COCO Detection |
 | RF-DETR 2XL (`rf_detr_2xl`) | 物件偵測 | 支援 | 支援，需額外套件與原模型授權 | YOLO Detection、COCO Detection |
+| RF-DETR-Seg-2XL (`rf_detr_seg_2xl`) | 實例分割 | 支援 | 分割微調尚未接入 | — |
 | ViViT Base K400 (`vivit_base_k400`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | X3D-L (`x3d_l`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | SlowFast R101 8×8 (`slowfast_r101_8x8`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | VideoMAE V2 Giant K710 (`videomaev2_giant_k710`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | DINOv3 ViT-7B (`dinov3_7b`) | 原始視覺表徵；微調分類頭的影像／逐幀分類 | 尚未接入 | 分類接頭已接入；擴充需既有分類 checkpoint | ImageFolder |
+
+在推論比較或即時攝影機選擇 YOLOv12、YOLO26、RF-DETR 後，可用「任務」切換物件偵測／實例分割。兩種任務使用不同權重，切換會清除不相容的 checkpoint 與舊結果。分割顯示半透明遮罩與輪廓，下載的 JSON／JSONL 包含原圖尺寸的 COCO RLE 遮罩；畫面狀態僅保留面積等摘要。偵測模型不能直接變成分割模型；現有便當 bbox 資料也不能直接作為分割監督標註。RF-DETR 的分割 2XL 使用 Apache-2.0 權重與 `rfdetr` 套件，與偵測 2XL 的 PML／`rfdetr-plus` 不同。
+
+YOLOv12 分割使用原作者 Seg 分支權重；工作台內的相容接頭保留其獨立 qk／v 注意力投影與位置編碼，不修改已安裝套件。此相容接頭目前僅驗證推論，不能視為已支援分割訓練。
 
 DINOv3 原始權重是視覺表徵骨幹，沒有 COCO 或 Kinetics 的分類輸出；推論輸出 pooled embedding 檔案與預覽，監督微調會建立線性分類頭。完整 7B 權重與所需環境都齊全時才允許執行；接頭存在不代表已下載完成，也不代表 12 GB GPU 能負擔完整 7B 參數微調。
 
@@ -145,15 +152,18 @@ RF-DETR 2XL 的 `rfdetr-plus` 為額外選配，不包含在預設安裝中。�
 |---|---:|---|---|
 | **YOLOv12x** | 119 MB | [官方模型說明](https://docs.ultralytics.com/models/yolo12/) · [下載 yolo12x.pt](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo12x.pt) | 單檔；Ultralytics v8.4.0 發布權重，對應本工作台原版 YOLOv12 接頭 |
 | **YOLO26x** | 119 MB | [官方模型說明](https://docs.ultralytics.com/models/yolo26/) · [下載 yolo26x.pt](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26x.pt) | 單檔；物件偵測版本 |
+| **YOLOv12x-Seg** | 130 MB | [原作者 Seg 分支](https://github.com/sunsmarterjie/yolov12/tree/Seg) · [下載 yolov12x-seg.pt](https://github.com/sunsmarterjie/yolov12/releases/download/seg/yolov12x-seg.pt) | 單檔；實例分割版本，與偵測版分開登錄 |
+| **YOLO26x-Seg** | 142 MB | [官方模型說明](https://docs.ultralytics.com/models/yolo26/) · [下載 yolo26x-seg.pt](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26x-seg.pt) | 單檔；實例分割版本 |
 | **Grounding DINO Base** | 934 MB | [IDEA-Research 官方模型](https://huggingface.co/IDEA-Research/grounding-dino-base) · [完整檔案列表](https://huggingface.co/IDEA-Research/grounding-dino-base/tree/12bdfa3120f3e7ec7b434d90674b3396eccf88eb) | 使用下方 `hf` 指令，包含 safetensors、config、processor、tokenizer |
 | **RF-DETR 2XL** | 508 MB | [官方專案](https://github.com/roboflow/rf-detr_plus) · [下載 rf-detr-xxlarge.pth](https://repo.roboflow.com/rfdetr/platform-licensed/rf-detr-xxlarge.pth) | 單檔；使用須符合 [PML 1.0](https://github.com/roboflow/rf-detr_plus/blob/main/LICENSE)，並安裝選配 `rfdetr-plus` |
+| **RF-DETR-Seg-2XL** | 155 MB | [官方專案](https://github.com/roboflow/rf-detr) · [下載分割權重](https://storage.googleapis.com/rfdetr/rf-detr-seg-2xl-ft.pth) | 另存 `rf-detr-seg-xxlarge.pt`；Apache-2.0，使用 `rfdetr`，不需 `rfdetr-plus` |
 | **ViViT Base K400** | 356 MB | [Google 官方模型](https://huggingface.co/google/vivit-b-16x2-kinetics400) · [完整檔案列表](https://huggingface.co/google/vivit-b-16x2-kinetics400/tree/8a7171a57f79b9aaa58bc8d977c002a0ea0f0d42) | 使用下方 `hf` 指令；此處為 **Base**，含影片分類權重與設定 |
 | **X3D-L** | 50 MB | [官方 Model Zoo](https://github.com/facebookresearch/pytorchvideo/blob/main/docs/source/model_zoo.md) · [下載 X3D_L.pyth](https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/X3D_L.pyth) | 單檔；Kinetics-400 |
 | **SlowFast R101 8×8** | 504 MB | [官方 Model Zoo](https://github.com/facebookresearch/pytorchvideo/blob/main/docs/source/model_zoo.md) · [下載 SLOWFAST_8x8_R101.pyth](https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/SLOWFAST_8x8_R101.pyth) | 單檔；Kinetics-400 |
 | **VideoMAE V2 Giant K710** | 2.03 GB | [官方 Model Zoo](https://github.com/OpenGVLab/VideoMAEv2/blob/master/docs/MODEL_ZOO.md) · [下載 K710 微調權重](https://huggingface.co/OpenGVLab/VideoMAE2/resolve/706cc172d65ebd4dedbee3f9c0183a93df9fa125/mae-g/vit_g_hybrid_pt_1200e_k710_ft.pth) | 單檔 `vit_g_hybrid_pt_1200e_k710_ft.pth`；此為 K710 分類 checkpoint |
 | **DINOv3 ViT-7B/16 LVD-1689M（選配）** | **26.86 GB** | [Meta 官方模型／申請存取](https://huggingface.co/facebook/dinov3-vit7b16-pretrain-lvd1689m) | 須獲核准並登入 Hugging Face；6 個權重分片與設定。影像分類微調需完整目錄，硬體需求另計 |
 
-大小按十進位 MB／GB 計算，指上列指定權重與必要設定的磁碟下載量，**不是 RAM／VRAM 需求**；不含 Python、PyTorch、CUDA runtime、下載暫存與訓練產物。前八款合計約 **4.62 GB**；加上選配 DINOv3 約 **31.48 GB**。連結與檔案大小於 2026-10-18 核對；權重各自遵循原提供者授權。
+大小按十進位 MB／GB 計算，指上列指定權重與必要設定的磁碟下載量，**不是 RAM／VRAM 需求**；不含 Python、PyTorch、CUDA runtime、下載暫存與訓練產物。原有八款（不含分割與 DINOv3）約 **4.62 GB**；三款分割權重另約 **427 MB**，合計約 **5.05 GB**；再加 DINOv3 約 **31.91 GB**。原有模型於 2026-10-18 核對，分割模型於 2026-11-01 核對；權重各自遵循原提供者授權。
 
 <details>
 <summary><strong>複製單檔模型下載指令（YOLO、RF-DETR、X3D、SlowFast、VideoMAE）</strong></summary>
@@ -166,6 +176,11 @@ curl --fail --location --retry 3 --create-dirs --output models/yolov12x/yolo12x.
 
 # YOLO26x
 curl --fail --location --retry 3 --create-dirs --output models/yolo26x/yolo26x.pt "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26x.pt"
+
+# 實例分割：三個獨立權重，不與偵測權重共用
+curl --fail --location --retry 3 --create-dirs --output models/yolov12x_seg/yolov12x-seg.pt "https://github.com/sunsmarterjie/yolov12/releases/download/seg/yolov12x-seg.pt"
+curl --fail --location --retry 3 --create-dirs --output models/yolo26x_seg/yolo26x-seg.pt "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26x-seg.pt"
+curl --fail --location --retry 3 --create-dirs --output models/rf_detr_seg_2xl/rf-detr-seg-xxlarge.pt "https://storage.googleapis.com/rfdetr/rf-detr-seg-2xl-ft.pth"
 
 # RF-DETR 2XL：先確認符合原模型的 PML 1.0 使用條款
 curl --fail --location --retry 3 --create-dirs --output models/rf_detr_2xl/rf-detr-xxlarge.pth "https://repo.roboflow.com/rfdetr/platform-licensed/rf-detr-xxlarge.pth"
@@ -228,6 +243,9 @@ hf download facebook/dinov3-vit7b16-pretrain-lvd1689m --revision b80367753773648
 |---|---|
 | YOLOv12x | `yolo12x.pt` |
 | YOLO26x | `yolo26x.pt` |
+| YOLOv12x-Seg | `yolov12x-seg.pt` |
+| YOLO26x-Seg | `yolo26x-seg.pt` |
+| RF-DETR-Seg-2XL | `rf-detr-seg-xxlarge.pt` |
 | RF-DETR 2XL | `rf-detr-xxlarge.pth` |
 | Grounding DINO Base | 完整 Hugging Face 目錄，含權重、config、processor、tokenizer |
 | ViViT Base | 完整 Hugging Face 目錄，含權重、config、preprocessor |

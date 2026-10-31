@@ -76,6 +76,34 @@ def test_default_layout_and_dynamic_binding_keep_external_files_in_place(registr
     assert external.exists()
 
 
+@pytest.mark.parametrize("model_id", sorted(registry_module.SEGMENTATION_IDS))
+def test_segmentation_weights_scan_and_bind_separately_from_detection(registry, tmp_path, model_id):
+    filename = registry_module.FILES[model_id][1]
+    weight = write(tmp_path / "segmentation" / filename)
+    result = registry.scan([str(weight.parent)])
+    candidates = [item for item in result["candidates"] if item["model_id"] == model_id]
+    assert len(candidates) == 1 and candidates[0]["valid"]
+    assert registry.resolve(model_id) == weight
+    assert registry.bind(model_id, str(weight))["valid"]
+    assert WeightPaths()[model_id] == weight
+
+
+@pytest.mark.parametrize("detect_id,segment_id", [
+    ("yolo26x", "yolo26x_seg"), ("yolov12x", "yolov12x_seg"),
+    ("rf_detr_2xl", "rf_detr_seg_2xl"),
+])
+def test_detection_weights_and_checkpoints_cannot_be_bound_as_segmentation(tmp_path, detect_id, segment_id):
+    original = write(tmp_path / registry_module.FILES[detect_id][1])
+    with pytest.raises(ValueError):
+        validate_weight(segment_id, original)
+    renamed = write(tmp_path / "renamed" / "custom.pt")
+    document(renamed.parent / "workbench_training.json", {"model_id": detect_id, "classes": ["food"]})
+    with pytest.raises(ValueError, match="model_id"):
+        validate_weight(segment_id, renamed)
+    with pytest.raises(ValueError, match="分割微調權重尚未接入"):
+        validate_checkpoint(segment_id, checkpoint(tmp_path / "trained", detect_id))
+
+
 def test_scan_never_selects_ambiguous_candidates_and_binding_deletion_does_not_delete_weights(registry, tmp_path):
     first = write(tmp_path / "downloads/a/yolo26x.pt")
     second = write(tmp_path / "downloads/b/yolo26x.pt")

@@ -64,6 +64,49 @@ def request(models=None, **kwargs):
             "capture_fps": 8, "max_duration_seconds": 900, **kwargs}
 
 
+@pytest.mark.parametrize("model_id", sorted(live.SEGMENTATION_IDS))
+def test_segmentation_runner_uses_shared_detector_adapter(monkeypatch, model_id):
+    calls = []
+    predict = object()
+    monkeypatch.setattr(live, "create_detector", lambda *args: calls.append(args) or predict)
+    spec = {"model_id": model_id, "params": {"conf": .3}, "model_weight_path": "external-seg.pt"}
+    runner = live._load_runner(spec, "cpu")
+    assert runner == {"task": "segmentation", "predict": predict, "device": "cpu"}
+    assert calls == [(model_id, spec["params"], "cpu", None, "external-seg.pt")]
+
+
+def test_live_segmentation_renders_masks_but_only_publishes_summaries(harness, monkeypatch):
+    output, inputs, clock, snapshots = harness
+    publish_frames(inputs, [(1, clock.now, 20)])
+    predictions = [{"label": "food", "score": .9, "box": [0, 0, 8, 8], "mask_area": 64,
+                    "mask": {"size": [24, 32], "counts": [0, 64, 704]}}]
+    rendered, inferred = [], []
+
+    def predict(image):
+        inferred.append(image.size)
+        (output / "stop.signal").write_text("stop")
+        return predictions
+
+    def render(pixels, values, title=None):
+        rendered.append(copy.deepcopy(values))
+        return Image.fromarray(pixels)
+
+    monkeypatch.setattr(live, "create_detector", lambda *args: predict)
+    monkeypatch.setattr(live, "draw_predictions", render)
+    spec = {"key": "0", "model_id": "yolo26x_seg", "params": {"device": "cpu"}}
+    result = live.run_live(request([spec]), output, lambda event: None)
+    assert inferred == [(32, 24)]
+    assert rendered == [predictions] and "mask" in predictions[0]
+    expected = [{key: value for key, value in predictions[0].items() if key != "mask"}]
+    assert result["live"]["models"][0]["predictions"] == expected
+    assert result["live"]["models"][0]["processed_frames"] == 1
+    for state in snapshots:
+        for row in state["models"]:
+            for prediction in row.get("predictions", []):
+                assert "mask" not in prediction
+                assert prediction["mask_area"] == 64
+
+
 def test_models_load_once_and_compare_same_frame_across_multiple_updates(harness, monkeypatch):
     output, inputs, clock, snapshots = harness
     publish_frames(inputs, [(1, clock.now, 20)])

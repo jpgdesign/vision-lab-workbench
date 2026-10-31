@@ -28,7 +28,7 @@ export async function api(path, options = {}) {
 }
 export const activeJob = job => job && ['queued', 'running'].includes(job.status);
 export const statusNames = { queued: '排隊中', running: '執行中', completed: '已完成', failed: '失敗', cancelled: '已取消' };
-export const taskNames = { detection: '物件偵測', action: '行為辨識', embedding: '視覺表徵' };
+export const taskNames = { detection: '物件偵測', segmentation: '實例分割', action: '行為辨識', embedding: '視覺表徵' };
 export const byteSize = bytes => !bytes ? '—' : bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${(bytes / 1e6).toFixed(1)} MB`;
 export const modelDefaults = model => Object.fromEntries((model?.capabilities?.inference_params || []).map(param => [param.key, param.default]));
 export function optionParts(option) { return typeof option === 'object' ? { value: option.value ?? option.id ?? option.key, label: option.label ?? option.name ?? option.value ?? option.id } : { value: option, label: option }; }

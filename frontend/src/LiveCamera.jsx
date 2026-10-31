@@ -12,6 +12,7 @@ import { LiveJpegEncoder } from './liveJpegEncoder';
 import { canRunWithWeights, checkpointChoices, checkpointRequest, checkpointUnavailable, selectedCheckpoint } from './checkpoints';
 import { deviceAvailable } from './systemDevices';
 import { inferenceOnlyCheckpoint } from './trainingExpansion';
+import ModelTaskFields from './ModelTaskFields';
 
 const inactiveStatuses = new Set(['completed', 'failed', 'cancelled']);
 const fileOnlyParams = new Set(['frame_stride', 'max_frames', 'num_clips', 'start_seconds']);
@@ -39,7 +40,7 @@ function ModelCard({ card, index, models, jobs, registeredCheckpoints, confirmLi
   return <article className={`live-model-card ${result?.status === 'failed' ? 'has-error' : ''}`}>
     <header><span className="node-number">{String(index + 1).padStart(2, '0')}</span><div><strong>{model?.name || '選擇模型'}</strong><small>{taskNames[model?.task] || '即時比較區塊'}</small></div><button className="icon-button danger-hover" aria-label={`移除即時區塊 ${index + 1}`} disabled={disabled} onClick={onRemove}><Trash2 size={15}/></button></header>
     <div className="live-card-config">
-      <label className="field"><span>辨識模型</span><select value={card.modelId} disabled={disabled} onChange={event => { const next = models.find(item => item.id === event.target.value); onChange({ modelId: next.id, params: modelDefaults(next), checkpointJobId: '', checkpointId: '' }); }}>{models.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+      <ModelTaskFields models={models} modelId={card.modelId} label="辨識模型" disabled={disabled} onChange={patch => { setAdvanced(false); onChange(patch); }}/>
       {(checkpoints.length > 0 || selectedCheckpoint(card)) && <label className="field"><span>模型權重</span><select value={selectedCheckpoint(card)} disabled={disabled} onChange={event => onChange({ checkpointId: event.target.value, checkpointJobId: '' })}><option value="" disabled={!model?.available}>{model?.available ? '原始預訓練權重' : '原始權重未齊，請選擇微調權重'}</option>{selectedCheckpoint(card) && !chosenCheckpoint && <option value={selectedCheckpoint(card)} disabled>先前權重已不可用</option>}{checkpoints.map(item => <option key={item.id} value={item.id} disabled={!item.valid || inferenceOnlyCheckpoint(item)}>{item.source === 'external' ? '外部 · ' : ''}{item.name}{inferenceOnlyCheckpoint(item) ? ' · 雙分支請用圖片／影片推論比較' : !item.valid ? ' · 路徑失效' : ''}</option>)}</select></label>}
       {checkpoints.some(inferenceOnlyCheckpoint) && <p className="training-source-note">雙分支模型目前不支援即時串流，請到推論比較選擇圖片或影片。</p>}
       {card.modelId === 'grounding_dino_base' && trainedPrompt && <button className="button ghost small" disabled={disabled || trainedPrompt.length > 2000} onClick={() => onChange({ params: { ...card.params, prompt: trainedPrompt } })}>套用微調類別為偵測目標</button>}
@@ -61,7 +62,8 @@ function ModelCard({ card, index, models, jobs, registeredCheckpoints, confirmLi
 }
 
 export default function LiveCamera({ models, jobs, system, confirmLicense, checkpoints = [] }) {
-  const availableModels = models.filter(model => model.inference_supported && ['detection', 'action'].includes(model.task) && (model.available || model.environment_available && checkpointChoices(model.id, checkpoints, jobs).some(item => item.valid && !inferenceOnlyCheckpoint(item))));
+  const selectableModels = models.filter(model => model.inference_supported && ['detection', 'segmentation', 'action'].includes(model.task));
+  const availableModels = selectableModels.filter(model => model.available || model.environment_available && checkpointChoices(model.id, checkpoints, jobs).some(item => item.valid && !inferenceOnlyCheckpoint(item)));
   const [cards, setCards] = useState(() => { const model = availableModels.find(item => item.id === 'yolo26x') || availableModels[0]; return model ? [{ id: uid(), modelId: model.id, params: modelDefaults(model), checkpointJobId: '' }] : []; });
   const [devices, setDevices] = useState([]), [deviceId, setDeviceId] = useState('');
   const [sourceMode, setSourceMode] = useState('camera'), [vdoUrl, setVdoUrl] = useState(''), [vdoSource, setVdoSource] = useState(null);
@@ -357,7 +359,7 @@ export default function LiveCamera({ models, jobs, system, confirmLicense, check
         {error && <div className="live-error" role="alert"><CircleHelp size={17}/><span>{error}</span></div>}
         {bundleSelected && <div className="live-error" role="alert">已選雙分支模型，目前請改用圖片／影片推論比較；即時串流需選單一模型權重。</div>}
         {finished && <div className="live-finished-note">{session.status === 'failed' ? '即時任務失敗。' : '即時任務已結束。'}以下保留本次最後一次收到的結果，並非即時影像。</div>}
-        <div className="live-model-grid">{cards.map((card, index) => <ModelCard key={card.id} card={card} index={index} models={availableModels} jobs={jobs} registeredCheckpoints={checkpoints} confirmLicense={confirmLicense} disabled={active} result={liveState?.models?.find(result => String(result.key) === String(index))} finished={finished} onChange={patch => updateCard(card.id, patch)} onRemove={() => { setCards(previous => previous.filter(item => item.id !== card.id)); setLiveState(null); setSession(null); }}/>)}</div>
+        <div className="live-model-grid">{cards.map((card, index) => <ModelCard key={card.id} card={card} index={index} models={selectableModels} jobs={jobs} registeredCheckpoints={checkpoints} confirmLicense={confirmLicense} disabled={active} result={liveState?.models?.find(result => String(result.key) === String(index))} finished={finished} onChange={patch => updateCard(card.id, patch)} onRemove={() => { setCards(previous => previous.filter(item => item.id !== card.id)); setLiveState(null); setSession(null); }}/>)}</div>
         {!cards.length && <div className="live-empty"><Monitor size={32}/><h3>新增一個即時比較區塊</h3><p>先從 YOLO26 開始，再加入其他模型觀察速度與效果。</p></div>}
       </section>
     </div><canvas ref={canvasRef} hidden/>

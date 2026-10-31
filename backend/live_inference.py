@@ -18,8 +18,10 @@ from pathlib import Path
 from .inference import (classification_probabilities, create_action_model, create_detector,
                         draw_predictions, prepare_action_tensor, resolve_device, synchronize)
 from .live_limits import FRAME_RING_SIZE
+from .model_registry import SEGMENTATION_IDS
 
-DETECTORS = {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"}
+DETECTORS = {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"} | SEGMENTATION_IDS
+FRAME_TASKS = {"detection", "segmentation"}
 ACTIONS = {"vivit_base_k400", "videomaev2_giant_k710", "slowfast_r101_8x8", "x3d_l"}
 INPUT_TIMEOUT = 20.0
 
@@ -171,12 +173,19 @@ def _load_runner(spec, device):
         raise ValueError("雙分支模型目前支援上傳圖片／影片比較；即時攝影機尚未接入雙分支，請選擇單一模型。")
     model_id = spec["model_id"]
     if model_id in DETECTORS:
-        return {"task": "detection", "predict": create_detector(model_id, spec["params"], device,
+        return {"task": "segmentation" if model_id in SEGMENTATION_IDS else "detection", "predict": create_detector(model_id, spec["params"], device,
                                                                    spec.get("checkpoint_path"), spec.get("model_weight_path")), "device": device}
     if model_id in ACTIONS:
         model, metadata = create_action_model(model_id, device, spec.get("checkpoint_path"), spec.get("model_weight_path"))
         return {"task": "action", "model": model, "metadata": metadata, "device": device}
     raise ValueError("此模型尚未提供即時影像辨識接頭。")
+
+
+def _prediction_summaries(predictions):
+    # The annotated frame already contains masks. Keep polling responses and
+    # session summaries small while retaining boxes, scores and mask statistics.
+    return [{key: value for key, value in prediction.items() if key != "mask"}
+            for prediction in predictions]
 
 
 def run_live(request, output_dir, emit):
@@ -266,7 +275,7 @@ def run_live(request, output_dir, emit):
                     stop_reason = "已達設定的即時測試時間上限"
                     break
                 row = rows[index]
-                row.update(status="running", message="即時物件偵測" if runner["task"] == "detection" else "最近片段的行為分類")
+                row.update(status="running", message={"detection": "即時物件偵測", "segmentation": "即時實例分割", "action": "最近片段的行為分類"}[runner["task"]])
                 pixels, sampled = None, None
                 window = float(spec["params"].get("clip_seconds", 4)) if runner["task"] == "action" else 0
                 if runner["task"] == "action":
@@ -281,19 +290,19 @@ def run_live(request, output_dir, emit):
                 device = runner["device"]
                 synchronize(device)
                 before = time.perf_counter()
-                predictions = (runner["predict"](image) if runner["task"] == "detection" else
+                predictions = (runner["predict"](image) if runner["task"] in FRAME_TASKS else
                                _action_predict(runner["model"], runner["metadata"], pixels, spec["params"], device))
                 synchronize(device)
                 duration_ms = (time.perf_counter() - before) * 1000
-                title = None if runner["task"] == "detection" else (
+                title = None if runner["task"] in FRAME_TASKS else (
                     f"{predictions[0]['label']} {predictions[0]['score']:.1%}" if predictions else "No prediction")
-                annotated = draw_predictions(np.asarray(image), predictions if runner["task"] == "detection" else [], title)
+                annotated = draw_predictions(np.asarray(image), predictions if runner["task"] in FRAME_TASKS else [], title)
                 filename = f"result_{index}.jpg"
                 _save_image(annotated, output / filename)
                 finished = time.monotonic()
                 previous = last_outputs.get(index)
                 last_outputs[index] = finished
-                row.update(sequence=processed_sequence, predictions=predictions, inference_ms=round(duration_ms, 2),
+                row.update(sequence=processed_sequence, predictions=_prediction_summaries(predictions), inference_ms=round(duration_ms, 2),
                            processed_frames=row["processed_frames"] + 1, window_seconds=window,
                            sampled_frames=len(sampled) if sampled else 1,
                            unique_frames=len({f["sequence"] for f in sampled}) if sampled else 1,
