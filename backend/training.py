@@ -365,6 +365,15 @@ def run_training(request: dict, output_dir: str | Path, emit: Emit) -> dict:
         raise
 
 
+def _yolo_warmup_options(p: dict) -> dict:
+    # Never inherit the native 0.1 starting LR for parameter group zero. That
+    # can exceed a fine-tuning AdamW LR by hundreds of times; in Ultralytics
+    # 8.4.0 this group also contains weights rather than the expected biases.
+    # Keep native warmup duration/momentum/accumulation and warm every group
+    # from zero toward its configured, scheduled learning rate.
+    return {"warmup_epochs": p["warmup_epochs"], "warmup_bias_lr": 0.0}
+
+
 def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     import torch
     import yaml
@@ -420,6 +429,16 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     fields = ["epoch", "train_loss", "val_loss", "map50", "map50_95", "lr"]
     csv_path.write_text(",".join(fields) + "\n", encoding="utf-8")
 
+    def write_effective_config(trainer):
+        # Persist actual settings before the first batch too, so failed runs
+        # retain the AMP and warmup settings that really took effect.
+        _write_json(output / "effective_training.json", {"device": str(device), "amp": bool(trainer.amp),
+                    "freeze_layers": freeze, "actual_batch_size": int(trainer.batch_size), "epochs_completed": len(metrics),
+                    "early_stopping": trainer.stopper.summary(),
+                    "warmup": {"epochs": float(trainer.args.warmup_epochs),
+                               "initial_group_lr": float(trainer.args.warmup_bias_lr)},
+                    "requested_params": p, "ultralytics_args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(trainer.args).items()}})
+
     def activate_amp(trainer):
         # Ultralytics' AMP probe downloads a separate small model. Configure
         # AMP after setup instead; every actual loss is checked for finiteness.
@@ -428,7 +447,10 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
         trainer.amp = enabled
         trainer.scaler = torch.amp.GradScaler("cuda", enabled=enabled)
         _install_yolo_stopper(trainer, p["patience"], emit)
-        emit({"event": "log", "message": f"使用本機權重；AMP={enabled}，freeze={freeze}，目標梯度累積={p['accumulate']}。"})
+        write_effective_config(trainer)
+        warmup_note = "所有參數組由 0 暖身至設定學習率" if trainer.args.warmup_epochs > 0 else "暖身停用"
+        emit({"event": "log", "message": f"使用本機權重；AMP={enabled}，freeze={freeze}，目標梯度累積={p['accumulate']}；"
+              f"warmup_epochs={trainer.args.warmup_epochs}，warmup_bias_lr={trainer.args.warmup_bias_lr}（{warmup_note}）。"})
 
     def batch_finished(trainer):
         loss = getattr(trainer, "loss", None)
@@ -462,6 +484,7 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
         with csv_path.open("a", newline="", encoding="utf-8") as handle:
             csv.DictWriter(handle, fieldnames=fields).writerow(row)
         _write_json(output / "metrics.json", metrics)
+        write_effective_config(trainer)
         emit({"event": "metric", **row})
         emit({"event": "progress", "progress": min(0.98, row["epoch"] / p["epochs"]),
               "message": f"Epoch {row['epoch']} / {p['epochs']} 完成"})
@@ -473,7 +496,7 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
                   lr0=p["lr"], lrf=p["lrf"], optimizer=p["optimizer"], weight_decay=p["weight_decay"],
                   momentum=p["momentum"], patience=p["patience"], seed=p["seed"], workers=p["workers"],
                   device=str(device.index or 0) if device.type == "cuda" else "cpu", amp=False,
-                  freeze=freeze, cos_lr=p["scheduler"] == "cosine", warmup_epochs=p["warmup_epochs"],
+                  freeze=freeze, cos_lr=p["scheduler"] == "cosine", **_yolo_warmup_options(p),
                   nbs=p["batch_size"] * p["accumulate"], box=p["box"], cls=p["cls"],
                   project=str(output), name="train", exist_ok=True, save=True, val=True,
                   plots=False, pretrained=True, resume=False, cache=False, deterministic=True)
@@ -494,10 +517,7 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     shutil.copy2(last, final_last)
     _write_json(output / "workbench_training.json", {"schema_version": 1, "model_id": request["model_id"],
                 "classes": dataset["classes"], "checkpoint_format": "ultralytics"})
-    _write_json(output / "effective_training.json", {"device": str(device), "amp": bool(p["amp"] and device.type == "cuda"),
-                "freeze_layers": freeze, "actual_batch_size": int(trainer.batch_size), "epochs_completed": len(metrics),
-                "early_stopping": trainer.stopper.summary(),
-                "requested_params": p, "ultralytics_args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(trainer.args).items()}})
+    write_effective_config(trainer)
     emit({"event": "progress", "progress": 1.0, "message": "訓練與驗證完成，已保存最佳與最後權重"})
     artifacts = {"best": str(final_best), "last": str(final_last), "checkpoint_metadata": str(output / "workbench_training.json"),
             "metrics": str(csv_path), "metrics_json": str(output / "metrics.json"),

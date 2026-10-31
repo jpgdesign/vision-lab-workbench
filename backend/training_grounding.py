@@ -114,6 +114,29 @@ def _caption(classes: list[str], tokenizer, max_text_len: int) -> tuple[str, int
     return caption, int(count)
 
 
+def prepare_training_caption(classes: list[str], tokenizer, config) -> tuple[str, int, dict]:
+    """Fit the complete caption before constructing length-dependent heads.
+
+    The contrastive head has no length-dependent learned parameters, but stores
+    max_text_len at construction. Never change only model.config after loading,
+    truncate labels, or extend the pretrained text backbone's position table.
+    """
+    original = getattr(config, "max_text_len", None)
+    position_limit = getattr(getattr(config, "text_config", None), "max_position_embeddings", None)
+    if any(type(value) is not int or value < 1 for value in (original, position_limit)):
+        raise ValueError("Grounding DINO 設定缺少有效的 max_text_len 或文字位置上限。")
+    if original > position_limit:
+        raise ValueError(f"Grounding DINO max_text_len={original} 超過文字骨幹位置上限 {position_limit}。")
+    # Validate phrase identity and every token against the actual pretrained
+    # position capacity, before mutating the config or allocating model tensors.
+    caption, count = _caption(classes, tokenizer, position_limit)
+    effective = max(original, count)
+    config.max_text_len = effective
+    limits = {"base_max_text_len": original, "max_text_len": effective,
+              "text_backbone_max_position_embeddings": position_limit}
+    return caption, count, limits
+
+
 def _detection_samples(dataset: dict) -> tuple[list[dict], list[dict]]:
     """Map both supported formats to 0-based classes and normalized cxcywh."""
     from PIL import Image
@@ -282,7 +305,10 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     config.bbox_loss_coefficient = p["bbox_loss_coefficient"]
     config.giou_loss_coefficient = p["giou_loss_coefficient"]
     config.focal_alpha = p["focal_alpha"]
-    caption, text_tokens = _caption(classes, processor.tokenizer, config.max_text_len)
+    caption, text_tokens, text_limits = prepare_training_caption(classes, processor.tokenizer, config)
+    if text_limits["max_text_len"] != text_limits["base_max_text_len"]:
+        emit({"event": "log", "message": f"保留全部類別提示，文字上限由 {text_limits['base_max_text_len']} "
+              f"調整為 {text_limits['max_text_len']} tokens（本機文字骨幹上限 {text_limits['text_backbone_max_position_embeddings']}）。"})
     random.seed(p["seed"])
     np.random.seed(p["seed"])
     torch.manual_seed(p["seed"])
@@ -313,7 +339,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     val_loader = DataLoader(_DetectionSamples(val_samples, p["imgsz"], False), shuffle=False, **common)
     stopper = EarlyStoppingTracker(p["patience"], "min", "val_loss", emit)
     effective = {"device": str(device), "amp": amp, "amp_dtype": str(amp_dtype) if amp else "float32",
-                 "classes": classes, "caption": caption, "text_tokens": text_tokens, "params": p,
+                 "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits, "params": p,
                  "trainable_parameters": sum(parameter.numel() for parameter in trainable),
                  "total_parameters": sum(parameter.numel() for parameter in model.parameters()),
                  "preprocessing": "square bilinear resize; normalized cxcywh; ImageNet normalization",
@@ -323,7 +349,8 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                  "cardinality_error": "unweighted native diagnostic; not part of the optimization objective; not an open-vocabulary detection count metric",
                  "class_loss_coefficient": 2.0, "checkpoint_format": "huggingface_safetensors"}
     _write_json(output / "training_config.json", {"model_id": request["model_id"], "params": p,
-                "dataset_id": dataset.get("id"), "dataset_classes": classes, "schema_version": 1})
+                "dataset_id": dataset.get("id"), "dataset_classes": classes, "schema_version": 1,
+                "caption": caption, "text_tokens": text_tokens, **text_limits})
     _write_json(output / "effective_training.json", effective)
     emit({"event": "log", "message": f"Grounding DINO：{len(classes)} 類、{text_tokens} tokens；"
           f"{effective['trainable_parameters']:,} 個可訓練參數，{device}，AMP={amp}。"})
@@ -340,7 +367,8 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         model.save_pretrained(str(destination), safe_serialization=True)
         processor.save_pretrained(str(destination))
         _write_json(destination / "workbench_training.json", {"model_id": request["model_id"], "epoch": epoch,
-                    "classes": classes, "caption": caption, "params": p, "dataset_id": dataset.get("id"),
+                    "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits,
+                    "params": p, "dataset_id": dataset.get("id"),
                     "inference_input": "image_or_video", "label_format": "zero_based_caption_phrase_index"})
 
     for epoch in range(1, p["epochs"] + 1):

@@ -49,6 +49,10 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 
 Early Stopping 的監控指標依模型而定：YOLO／RF-DETR 使用驗證 mAP50–95；Grounding DINO／行為模型使用驗證損失。`patience=0` 停用提前停止。
 
+YOLO 的暖身學習率從 0 增加至設定值，避免原生 `warmup_bias_lr=0.1` 遠高於微調學習率。實際 AMP、暖身與訓練參數會在第一批之前寫入 `effective_training.json`；出現 NaN／Inf 時仍會停止，請檢查學習率或關閉混合精度後重試。
+
+Grounding DINO 會保留完整訓練類別提示。若 token 數超過原始 `max_text_len`，接頭會在載入模型前增加長度，上限為本機文字骨幹的位置容量（預設 BERT 為 512）。超過容量會明確拒絕，不截斷類別；完整提示與有效長度會保存至 checkpoint，供推論重載。
+
 ### 驗證範圍
 
 Windows + RTX 3060 12 GB 上，八款模型已完成真實 GPU 推論。YOLO26x、X3D-L、Grounding DINO 與 RF-DETR 2XL 完成過小型資料集的訓練、存檔及回測。其他訓練接頭有參數與流程測試，但未全部完成大型正式資料集訓練。
