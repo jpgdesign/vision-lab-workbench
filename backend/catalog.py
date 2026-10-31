@@ -79,6 +79,7 @@ def get_models():
             params += deepcopy(VIDEO_PARAMS)
         elif model_id == "grounding_dino_base":
             params += [param("prompt", "偵測目標（英文，以句點分隔）", "person . car . bicycle . dog ."),
+                       param("use_training_classes", "使用完整微調類別", False),
                        param("conf", "物件閾值", 0.3, minimum=0.01, maximum=0.99, step=0.01),
                        param("text_threshold", "文字閾值", 0.25, minimum=0.01, maximum=0.99, step=0.01)] + deepcopy(VIDEO_PARAMS)
         elif model_id == "rf_detr_2xl":

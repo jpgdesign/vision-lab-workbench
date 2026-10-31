@@ -1,6 +1,7 @@
 """Offline Grounding DINO supervised box fine-tuning with native HF loss.
 
-Class indices refer to period-delimited phrases in a shared, checked caption.
+Global class indices map to period-delimited phrases in checked captions.
+Long vocabularies use complete, fixed groups without dropping annotations.
 The dataset is read only; all checkpoints and metrics belong to the job.
 """
 from __future__ import annotations
@@ -95,23 +96,8 @@ def normalize_training_params(params: dict | None) -> dict:
 
 def _caption(classes: list[str], tokenizer, max_text_len: int) -> tuple[str, int]:
     """Require one unambiguous native loss label-map row per dataset class."""
-    import torch
-    from transformers.models.grounding_dino.modeling_grounding_dino import build_label_maps
-    if any(re.search(r"[.?!\[\]]", name) for name in classes):
-        raise ValueError("Grounding DINO 類別名稱不可含句點、問號、驚嘆號或特殊 token 括號；請改用完整單一詞組。")
-    normalized = [name.strip().lower() for name in classes]
-    if len(set(normalized)) != len(normalized):
-        raise ValueError("Grounding DINO 類別名稱轉小寫後不可重複。")
-    caption = " . ".join(normalized) + " ."
-    encoded = tokenizer(caption, return_tensors="pt", truncation=False)
-    ids = encoded["input_ids"]
-    count = ids.shape[1]
-    if count > max_text_len:
-        raise ValueError(f"所有類別提示共 {count} tokens，超過本機 Grounding DINO 上限 {max_text_len}；請縮短類別名稱或拆分資料集。")
-    maps = build_label_maps(torch.empty((1, 1, max_text_len)), ids)
-    if maps[0].shape[0] != len(classes) or (maps[0].sum(-1) == 0).any():
-        raise ValueError("類別名稱無法與 Grounding DINO 的文字 token 一一對應，請移除特殊標記與分隔符。")
-    return caption, int(count)
+    from .grounding_prompts import validated_caption
+    return validated_caption(classes, tokenizer, max_text_len)
 
 
 def prepare_training_caption(classes: list[str], tokenizer, config) -> tuple[str, int, dict]:
@@ -232,6 +218,22 @@ class _Collator:
         return inputs
 
 
+class _GroupedCollator:
+    def __init__(self, processor, chunks):
+        self.processor, self.chunks = processor, chunks
+
+    def __call__(self, samples):
+        from .grounding_prompts import remap_chunk_labels
+        images, labels = zip(*samples)
+        batches = []
+        for chunk in self.chunks:
+            inputs = self.processor(images=list(images), text=[chunk["caption"]] * len(images),
+                                    do_resize=False, padding=True, return_tensors="pt")
+            inputs["labels"] = remap_chunk_labels(labels, chunk["global_class_ids"])
+            batches.append(inputs)
+        return batches
+
+
 def _to_device(inputs, device):
     return {key: [{k: v.to(device) for k, v in label.items()} for label in value] if key == "labels"
             else value.to(device) for key, value in inputs.items()}
@@ -286,6 +288,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     from .training import (EarlyStoppingTracker, _build_optimizer, _build_scheduler, _catalog_weight,
                            _resolve_device, _seed_worker, _validated_dataset, _write_json)
     from .detection_expansion import DetectionRetention, expansion_spec, grounding_predictor
+    from .grounding_prompts import prepare_caption_chunks, chunk_loss_weight
 
     p = normalize_training_params(request.get("params"))
     mode = request.get("training_mode", "standard")
@@ -315,7 +318,20 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     config.bbox_loss_coefficient = p["bbox_loss_coefficient"]
     config.giou_loss_coefficient = p["giou_loss_coefficient"]
     config.focal_alpha = p["focal_alpha"]
-    caption, text_tokens, text_limits = prepare_training_caption(classes, processor.tokenizer, config)
+    caption_chunks, text_limits = prepare_caption_chunks(classes, processor.tokenizer, config)
+    # A multi-caption checkpoint must never present its first chunk as the
+    # complete vocabulary. caption_chunks is authoritative for grouped models.
+    grouped = len(caption_chunks) > 1
+    caption = "" if grouped else caption_chunks[0]["caption"]
+    text_tokens = max(chunk["text_tokens"] for chunk in caption_chunks)
+    prompt_metadata = {"caption": caption, "text_tokens": text_tokens,
+                       "caption_mode": "chunked" if grouped else "single",
+                       "caption_chunks": caption_chunks,
+                       "caption_class_count": len(classes),
+                       "chunk_loss_reduction": "mean_over_all_caption_chunks_per_batch",
+                       "score_semantics": "conditional_phrase_scores_not_cross_chunk_calibrated"}
+    if grouped:
+        emit({"event": "log", "message": f"完整 {len(classes)} 類分成 {len(caption_chunks)} 組文字提示；每張圖訓練及驗證所有組別，保留所有標註，不截斷類別。"})
     if text_limits["max_text_len"] != text_limits["base_max_text_len"]:
         emit({"event": "log", "message": f"保留全部類別提示，文字上限由 {text_limits['base_max_text_len']} "
               f"調整為 {text_limits['max_text_len']} tokens（本機文字骨幹上限 {text_limits['text_backbone_max_position_embeddings']}）。"})
@@ -335,7 +351,8 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     model.to(device)
     if retention:
         emit({"event": "log", "message": "Grounding DINO 以完整 union 提示詞建立原類別驗證基準；此評估不代表全部開放詞彙。" if retention.has_old else "未提供舊驗證集；只評估新增類別，舊開放詞彙能力未量測。"})
-        retention.baseline(grounding_predictor(model, processor, caption, retention.settings, device))
+        retention.baseline(grounding_predictor(model, processor, caption, retention.settings, device,
+                                               caption_chunks=caption_chunks))
     trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
     audit_name, audit_parameter = next((name, parameter) for name, parameter in model.named_parameters()
                                       if parameter.requires_grad and "bbox_embed" in name and name.endswith("weight"))
@@ -346,14 +363,14 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     amp_dtype = torch.bfloat16 if amp and torch.cuda.is_bf16_supported() else torch.float16
     scaler = torch.amp.GradScaler("cuda", enabled=amp and amp_dtype == torch.float16)
     common = dict(batch_size=p["batch_size"], num_workers=p["workers"], worker_init_fn=_seed_worker,
-                  collate_fn=_Collator(processor, caption), persistent_workers=p["workers"] > 0)
+                  collate_fn=_GroupedCollator(processor, caption_chunks), persistent_workers=p["workers"] > 0)
     train_loader = DataLoader(_DetectionSamples(train_samples, p["imgsz"], p["augmentation"]),
                               shuffle=True, generator=torch.Generator().manual_seed(p["seed"]), **common)
     val_loader = DataLoader(_DetectionSamples(val_samples, p["imgsz"], False), shuffle=False, **common)
     stopper = EarlyStoppingTracker(p["patience"], "min", "val_loss", emit)
     effective = {"device": str(device), "amp": amp, "amp_dtype": str(amp_dtype) if amp else "float32",
                  "training_mode": mode,
-                 "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits, "params": p,
+                 "classes": classes, **prompt_metadata, **text_limits, "params": p,
                  "trainable_parameters": sum(parameter.numel() for parameter in trainable),
                  "total_parameters": sum(parameter.numel() for parameter in model.parameters()),
                  "preprocessing": "square bilinear resize; normalized cxcywh; ImageNet normalization",
@@ -365,7 +382,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                  **({"class_expansion": expansion, "head_expansion": "open_vocabulary_caption_only"} if expansion else {})}
     _write_json(output / "training_config.json", {"model_id": request["model_id"], "params": p,
                 "dataset_id": dataset.get("id"), "dataset_classes": classes, "schema_version": 1,
-                "caption": caption, "text_tokens": text_tokens, **text_limits,
+                **prompt_metadata, **text_limits,
                 **({"training_mode": mode, "class_expansion": expansion} if expansion else {})})
     _write_json(output / "effective_training.json", effective)
     emit({"event": "log", "message": f"Grounding DINO：{len(classes)} 類、{text_tokens} tokens；"
@@ -383,9 +400,9 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         model.save_pretrained(str(destination), safe_serialization=True)
         processor.save_pretrained(str(destination))
         _write_json(destination / "workbench_training.json", {"model_id": request["model_id"], "epoch": epoch,
-                    "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits,
+                    "classes": classes, **prompt_metadata, **text_limits,
                     "params": p, "dataset_id": dataset.get("id"),
-                    "inference_input": "image_or_video", "label_format": "zero_based_caption_phrase_index",
+                    "inference_input": "image_or_video", "label_format": "zero_based_global_class_index",
                     **({"training_mode": mode, "base_classes": expansion["base_classes"],
                         "class_expansion": expansion, "head_expansion": "open_vocabulary_caption_only"} if expansion else {})})
 
@@ -398,27 +415,30 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         optimizer.zero_grad(set_to_none=True)
         train_total, train_seen, train_components = 0.0, 0, {}
         batch_count = len(train_loader)
-        for index, inputs in enumerate(train_loader):
-            inputs = _to_device(inputs, device)
-            count = len(inputs["labels"])
+        for index, chunk_batches in enumerate(train_loader):
+            count = len(chunk_batches[0]["labels"])
             group_start = (index // p["accumulate"]) * p["accumulate"]
             group_end = min(group_start + p["accumulate"], batch_count)
             group_samples = min(len(train_samples), group_end * p["batch_size"]) - group_start * p["batch_size"]
-            with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp):
-                loss, components = _supervised_loss(model, inputs)
-            if loss is None or not torch.isfinite(loss):
-                raise RuntimeError("Grounding DINO 訓練損失出現 NaN / Inf；請停用 AMP 或降低學習率。")
-            scaler.scale(loss * (count / group_samples)).backward()
+            weight = chunk_loss_weight(count, group_samples, len(chunk_batches))
+            for batch in chunk_batches:
+                inputs = _to_device(batch, device)
+                with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp):
+                    loss, components = _supervised_loss(model, inputs)
+                if loss is None or not torch.isfinite(loss):
+                    raise RuntimeError("Grounding DINO 訓練損失出現 NaN / Inf；請停用 AMP 或降低學習率。")
+                scaler.scale(loss * weight).backward()
+                train_total += loss.detach().item() * count / len(chunk_batches)
+                for key, value in components.items():
+                    train_components[key] = train_components.get(key, 0.0) + value.detach().item() * count / len(chunk_batches)
+                del inputs, loss, components
             if index + 1 == group_end:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(trainable, p["gradient_clip"] or float("inf"), error_if_nonfinite=True)
                 scaler.step(optimizer)
                 scaler.update()
                 optimizer.zero_grad(set_to_none=True)
-            train_total += loss.detach().item() * count
             train_seen += count
-            for key, value in components.items():
-                train_components[key] = train_components.get(key, 0.0) + value.detach().item() * count
             emit({"event": "progress", "progress": 0.01 + 0.89 * (epoch - 1 + 0.8 * (index + 1) / batch_count) / p["epochs"],
                   "message": f"Epoch {epoch}/{p['epochs']} · train batch {index + 1}/{batch_count}"})
         model.eval()
@@ -426,17 +446,19 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
               "message": f"Epoch {epoch}/{p['epochs']} · 驗證資料集"})
         val_total, val_seen, val_components = 0.0, 0, {}
         with torch.no_grad():
-            for inputs in val_loader:
-                inputs = _to_device(inputs, device)
-                count = len(inputs["labels"])
-                with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp):
-                    loss, components = _supervised_loss(model, inputs)
-                if loss is None or not torch.isfinite(loss):
-                    raise RuntimeError("Grounding DINO 驗證損失出現 NaN / Inf。")
-                val_total += loss.item() * count
+            for chunk_batches in val_loader:
+                count = len(chunk_batches[0]["labels"])
+                for batch in chunk_batches:
+                    inputs = _to_device(batch, device)
+                    with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=amp):
+                        loss, components = _supervised_loss(model, inputs)
+                    if loss is None or not torch.isfinite(loss):
+                        raise RuntimeError("Grounding DINO 驗證損失出現 NaN / Inf。")
+                    val_total += loss.item() * count / len(chunk_batches)
+                    for key, value in components.items():
+                        val_components[key] = val_components.get(key, 0.0) + value.item() * count / len(chunk_batches)
+                    del inputs, loss, components
                 val_seen += count
-                for key, value in components.items():
-                    val_components[key] = val_components.get(key, 0.0) + value.item() * count
         row = {"epoch": epoch, "train_loss": train_total / train_seen, "val_loss": val_total / val_seen,
                "lr": optimizer.param_groups[0]["lr"], "seconds": round(time.monotonic() - started, 3)}
         metrics.append(row)
@@ -467,7 +489,8 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         from safetensors.torch import load_model
         # Evaluate the chosen best checkpoint, not the final optimizer state.
         load_model(model, str(output / "best" / "model.safetensors"), strict=True, device="cpu")
-        retention_result = retention.finish(grounding_predictor(model, processor, caption, retention.settings, device))
+        retention_result = retention.finish(grounding_predictor(model, processor, caption, retention.settings, device,
+                                                               caption_chunks=caption_chunks))
     if request.get("_skip_checkpoint_archives"):
         best_archive, last_archive = output / "best", output / "last"
     else:
@@ -483,7 +506,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
             **({"retention": str(output / "retention.json"), "retention_before": str(output / "retention_before.json")} if expansion else {})},
             "summary": f"完成 {len(metrics)} 輪 Grounding DINO 監督微調；最佳 epoch {stopper.best_epoch}，val loss {stopper.best_value:.5f}。",
             "training": {"model_id": request["model_id"], "checkpoint_format": "huggingface_safetensors",
-                         "checkpoint_directory": str(output / "best"), "classes": classes, "caption": caption,
+                         "checkpoint_directory": str(output / "best"), "classes": classes, **prompt_metadata,
                          "best_epoch": stopper.best_epoch, "early_stopping": stopper.summary(),
                          "parameter_update": update_evidence,
                          **({"training_mode": mode, "class_expansion": expansion, "retention": retention_result} if expansion else {})}}

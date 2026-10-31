@@ -262,11 +262,16 @@ def branch_request(request, bundle, branch_name):
     result["checkpoint_path" if branch["kind"] == "checkpoint" else "model_weight_path"] = str(Path(bundle) / branch["path"])
     # Original branch always receives exactly the user's inference settings.
     # For Grounding DINO, its new task uses the saved supervised caption.
+    if request["model_id"] == "grounding_dino_base" and branch["kind"] != "checkpoint":
+        result["params"]["use_training_classes"] = False
     if branch_name == "new" and request["model_id"] == "grounding_dino_base":
         from .model_registry import checkpoint_metadata
-        caption = checkpoint_metadata(Path(result["checkpoint_path"])).get("caption")
-        if caption:
-            result["params"]["prompt"] = caption
+        metadata = checkpoint_metadata(Path(result["checkpoint_path"]))
+        if metadata.get("caption_mode") == "chunked":
+            result["params"]["use_training_classes"] = True
+        elif metadata.get("caption"):
+            result["params"]["use_training_classes"] = False
+            result["params"]["prompt"] = metadata["caption"]
     return result
 
 
@@ -317,7 +322,7 @@ def _evaluate_branch(request, bundle, manifest, branch_name, split):
             evaluator.spec["new_class_ids"] = sorted(set(branch["label_map"]))
         if request["model_id"] == "grounding_dino_base":
             from transformers import AutoConfig, AutoProcessor, AutoModelForZeroShotObjectDetection
-            from .training_grounding import _caption
+            from .grounding_prompts import build_caption_chunks, validate_caption_chunks
             from .detection_expansion import grounding_predictor
             source = Path(spec.get("checkpoint_path") or spec["model_weight_path"])
             folder = source if source.is_dir() else source.parent
@@ -325,13 +330,19 @@ def _evaluate_branch(request, bundle, manifest, branch_name, split):
             config = AutoConfig.from_pretrained(str(folder), local_files_only=True)
             # Validate BEFORE model allocation/training. Never enlarge the
             # frozen source config or silently truncate the measured old scope.
-            caption, tokens = _caption(branch["classes"], processor.tokenizer, int(config.max_text_len))
+            metadata = _json(folder / "workbench_training.json") if (folder / "workbench_training.json").is_file() else {}
+            chunks = metadata.get("caption_chunks")
+            if chunks is None:
+                chunks = build_caption_chunks(branch["classes"], processor.tokenizer, int(config.max_text_len))
+            chunks = validate_caption_chunks(chunks, branch["classes"], processor.tokenizer, int(config.max_text_len))
+            caption = chunks[0]["caption"] if len(chunks) == 1 else ""
             model = AutoModelForZeroShotObjectDetection.from_pretrained(str(folder), local_files_only=True).to(device).eval()
-            native = grounding_predictor(model, processor, caption, evaluator.settings, device)
+            native = grounding_predictor(model, processor, caption, evaluator.settings, device, caption_chunks=chunks)
             def numeric_predict(image):
                 return [{**row, "class_id": branch["label_map"][row["class_id"]]} for row in native(image)]
             metrics = evaluator.evaluate(split, numeric_predict)
-            return {**metrics, "caption": caption, "caption_tokens": tokens, "source_max_text_len": int(config.max_text_len)}
+            return {**metrics, "caption": caption, "caption_chunks": chunks,
+                    "caption_tokens": max(chunk["text_tokens"] for chunk in chunks), "source_max_text_len": int(config.max_text_len)}
         native = create_detector(request["model_id"], spec["params"], device, spec.get("checkpoint_path"), spec.get("model_weight_path"))
         def predict(image):
             rows = mapped_predictions(native(image, spec["params"]), manifest, branch_name)

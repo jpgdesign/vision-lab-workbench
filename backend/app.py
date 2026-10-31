@@ -555,14 +555,17 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
         if payload.kind != "training":
             raise HTTPException(422, "此端點只供訓練預檢。")
         from .expansion import preview_expansion
-        return preview_expansion(build_job_request(payload))
+        from .grounding_preflight import preflight
+        request = build_job_request(payload)
+        return preflight(request, preview_expansion(request))
 
     @application.post("/api/jobs", status_code=201)
     def create_job(payload: JobInput):
         request = build_job_request(payload)
         if payload.kind == "training":
             from .expansion import preview_expansion
-            checked = preview_expansion(request)
+            from .grounding_preflight import preflight
+            checked = preflight(request, preview_expansion(request))
             if not checked["valid"]:
                 raise HTTPException(422, {"message": "訓練預檢未通過", "errors": checked["errors"], "plan": checked["plan"]})
         try:

@@ -265,20 +265,8 @@ def create_detector(model_id, params, device, checkpoint_path=None, model_weight
         source_dir = path if checkpoint_path else path.parent
         processor = AutoProcessor.from_pretrained(str(source_dir), local_files_only=True)
         model = AutoModelForZeroShotObjectDetection.from_pretrained(str(source_dir), local_files_only=True).to(device).eval()
-        def predict(image, inference_params=None):
-            current = params if inference_params is None else inference_params
-            prompt = current["prompt"].strip().lower()
-            if not prompt.endswith("."):
-                prompt += " ."
-            inputs = processor(images=image, text=prompt, return_tensors="pt").to(device)
-            with torch.inference_mode():
-                outputs = model(**inputs)
-            results = processor.post_process_grounded_object_detection(outputs, inputs.input_ids,
-                threshold=current["conf"], text_threshold=current["text_threshold"], target_sizes=[(image.height, image.width)])[0]
-            labels = results.get("text_labels", results.get("labels", []))
-            return [{"label": str(label), "score": float(score), "box": box.cpu().tolist()}
-                    for label, score, box in zip(labels, results["scores"], results["boxes"])]
-        return predict
+        from .grounding_inference import create_grounding_predictor
+        return create_grounding_predictor(model, processor, source_dir, params, device, is_checkpoint=bool(checkpoint_path))
     if model_id == "rf_detr_2xl":
         if not params.get("accept_platform_license"):
             raise ValueError("尚未確認 RF-DETR 2XL 所需的 PML 授權")

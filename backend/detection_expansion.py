@@ -134,28 +134,42 @@ def rfdetr_predictor(model, settings, source_ids=None):
     return predict
 
 
-def grounding_predictor(model, processor, caption, settings, device):
+def grounding_predictor(model, processor, caption, settings, device, *, caption_chunks=None):
     import torch
     from PIL import Image
     from transformers.models.grounding_dino.modeling_grounding_dino import build_label_maps
+    chunks = caption_chunks if caption_chunks is not None else [{"caption": caption, "global_class_ids": None}]
+    if not isinstance(chunks, list) or not chunks:
+        raise ValueError("Grounding DINO 缺少完整文字提示。")
     def predict(image):
         model.eval()
-        # Match the training square resize, using the same caption for before
+        # Match the training square resize, using the same caption groups before
         # and after. Numeric phrase maps avoid ambiguous decoded text labels.
         resized = image.resize((settings["imgsz"], settings["imgsz"]), Image.Resampling.BILINEAR)
-        inputs = processor(images=resized, text=caption, do_resize=False, return_tensors="pt").to(device)
-        with torch.inference_mode():
-            output = model(**inputs)
-        phrase_map = build_label_maps(output.logits, inputs["input_ids"])[0]
-        phrase_map = phrase_map.to(output.logits.dtype)
-        phrase_map = phrase_map / phrase_map.sum(-1, keepdim=True).clamp(min=1)
-        scores = output.logits[0].sigmoid() @ phrase_map.T
-        scores, labels = scores.max(-1)
-        boxes = output.pred_boxes[0]
-        boxes = torch.cat((boxes[:, :2] - boxes[:, 2:] / 2, boxes[:, :2] + boxes[:, 2:] / 2), -1)
-        boxes *= boxes.new_tensor([image.width, image.height, image.width, image.height])
-        return [{"class_id": int(label), "score": float(score), "box": box.cpu().tolist()}
-                for box, score, label in zip(boxes, scores, labels) if float(score) >= settings["confidence"]]
+        predictions = []
+        for chunk in chunks:
+            inputs = processor(images=resized, text=chunk["caption"], do_resize=False, return_tensors="pt").to(device)
+            if caption_chunks is not None:
+                maximum = model.config.max_text_len
+                if inputs["input_ids"].shape[1] > maximum:
+                    raise ValueError("分組文字提示超過已載入 Grounding DINO 的上限，不能截斷類別。")
+            with torch.inference_mode():
+                output = model(**inputs)
+            phrase_map = build_label_maps(output.logits, inputs["input_ids"])[0]
+            ids = chunk["global_class_ids"]
+            if ids is not None and phrase_map.shape[0] != len(ids):
+                raise ValueError("Grounding DINO 分組詞組與全域類別對應不一致。")
+            phrase_map = phrase_map.to(output.logits.dtype)
+            phrase_map = phrase_map / phrase_map.sum(-1, keepdim=True).clamp(min=1)
+            scores = output.logits[0].sigmoid() @ phrase_map.T
+            scores, labels = scores.max(-1)
+            boxes = output.pred_boxes[0]
+            boxes = torch.cat((boxes[:, :2] - boxes[:, 2:] / 2, boxes[:, :2] + boxes[:, 2:] / 2), -1)
+            boxes *= boxes.new_tensor([image.width, image.height, image.width, image.height])
+            predictions.extend({"class_id": int(label) if ids is None else ids[int(label)],
+                                "score": float(score), "box": box.cpu().tolist()}
+                               for box, score, label in zip(boxes, scores, labels) if float(score) >= settings["confidence"])
+        return predictions
     return predict
 
 

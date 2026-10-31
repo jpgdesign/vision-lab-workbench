@@ -13,6 +13,8 @@ import { canRunWithWeights, checkpointChoices, checkpointRequest, checkpointUnav
 import { deviceAvailable } from './systemDevices';
 import { inferenceOnlyCheckpoint } from './trainingExpansion';
 import ModelTaskFields from './ModelTaskFields';
+import GroundingTargetsControl from './GroundingTargetsControl';
+import { groundingParameterVisible, selectInferenceCheckpoint } from './groundingTrainingTargets';
 
 const inactiveStatuses = new Set(['completed', 'failed', 'cancelled']);
 const fileOnlyParams = new Set(['frame_stride', 'max_frames', 'num_clips', 'start_seconds']);
@@ -31,9 +33,7 @@ function ModelCard({ card, index, models, jobs, registeredCheckpoints, confirmLi
   const model = models.find(item => item.id === card.modelId);
   const checkpoints = checkpointChoices(card.modelId, registeredCheckpoints, jobs);
   const chosenCheckpoint = checkpoints.find(item => item.id === selectedCheckpoint(card));
-  const training = chosenCheckpoint?.training;
-  const trainedPrompt = training?.caption || (training?.classes?.length ? `${training.classes.join(' . ')} .` : '');
-  const allParams = (model?.capabilities?.inference_params || []).filter(param => !fileOnlyParams.has(param.key) && (param.key !== 'accept_platform_license' || model?.license_accepted !== true));
+  const allParams = (model?.capabilities?.inference_params || []).filter(param => !fileOnlyParams.has(param.key) && (param.key !== 'accept_platform_license' || model?.license_accepted !== true) && groundingParameterVisible(param, card.modelId, chosenCheckpoint, card.params));
   const params = advanced ? allParams : allParams.filter(param => ['conf', 'prompt', 'clip_seconds', 'top_k', 'accept_platform_license'].includes(param.key));
   const busy = result?.status === 'loading' || result?.status === 'warming';
   const label = finished ? '本次任務最後結果' : result?.stale ? '等待新結果' : ({ loading: '載入模型', warming: '累積影片片段', running: '即時辨識', completed: '本次任務最後結果', failed: '模型失敗' }[result?.status] || '等待開始');
@@ -41,9 +41,9 @@ function ModelCard({ card, index, models, jobs, registeredCheckpoints, confirmLi
     <header><span className="node-number">{String(index + 1).padStart(2, '0')}</span><div><strong>{model?.name || '選擇模型'}</strong><small>{taskNames[model?.task] || '即時比較區塊'}</small></div><button className="icon-button danger-hover" aria-label={`移除即時區塊 ${index + 1}`} disabled={disabled} onClick={onRemove}><Trash2 size={15}/></button></header>
     <div className="live-card-config">
       <ModelTaskFields models={models} modelId={card.modelId} label="辨識模型" disabled={disabled} onChange={patch => { setAdvanced(false); onChange(patch); }}/>
-      {(checkpoints.length > 0 || selectedCheckpoint(card)) && <label className="field"><span>模型權重</span><select value={selectedCheckpoint(card)} disabled={disabled} onChange={event => onChange({ checkpointId: event.target.value, checkpointJobId: '' })}><option value="" disabled={!model?.available}>{model?.available ? '原始預訓練權重' : '原始權重未齊，請選擇微調權重'}</option>{selectedCheckpoint(card) && !chosenCheckpoint && <option value={selectedCheckpoint(card)} disabled>先前權重已不可用</option>}{checkpoints.map(item => <option key={item.id} value={item.id} disabled={!item.valid || inferenceOnlyCheckpoint(item)}>{item.source === 'external' ? '外部 · ' : ''}{item.name}{inferenceOnlyCheckpoint(item) ? ' · 雙分支請用圖片／影片推論比較' : !item.valid ? ' · 路徑失效' : ''}</option>)}</select></label>}
+      {(checkpoints.length > 0 || selectedCheckpoint(card)) && <label className="field"><span>模型權重</span><select value={selectedCheckpoint(card)} disabled={disabled} onChange={event => onChange(selectInferenceCheckpoint(card, event.target.value, checkpoints))}><option value="" disabled={!model?.available}>{model?.available ? '原始預訓練權重' : '原始權重未齊，請選擇微調權重'}</option>{selectedCheckpoint(card) && !chosenCheckpoint && <option value={selectedCheckpoint(card)} disabled>先前權重已不可用</option>}{checkpoints.map(item => <option key={item.id} value={item.id} disabled={!item.valid || inferenceOnlyCheckpoint(item)}>{item.source === 'external' ? '外部 · ' : ''}{item.name}{inferenceOnlyCheckpoint(item) ? ' · 雙分支請用圖片／影片推論比較' : !item.valid ? ' · 路徑失效' : ''}</option>)}</select></label>}
       {checkpoints.some(inferenceOnlyCheckpoint) && <p className="training-source-note">雙分支模型目前不支援即時串流，請到推論比較選擇圖片或影片。</p>}
-      {card.modelId === 'grounding_dino_base' && trainedPrompt && <button className="button ghost small" disabled={disabled || trainedPrompt.length > 2000} onClick={() => onChange({ params: { ...card.params, prompt: trainedPrompt } })}>套用微調類別為偵測目標</button>}
+      <GroundingTargetsControl modelId={card.modelId} checkpoint={chosenCheckpoint} params={card.params} disabled={disabled} onChange={params => onChange({ params })}/>
       <div className="node-params">{params.map(param => <ParameterField key={param.key} compact disabled={disabled} param={param} value={card.params[param.key]} onChange={value => { onChange({ params: { ...card.params, [param.key]: value } }); if (param.key === 'accept_platform_license' && value === true) confirmLicense(model.id); }}/>)}</div>
       {model?.license_url && <a className="license-link" href={model.license_url} target="_blank" rel="noreferrer">{model.license_accepted === true ? '授權已確認 · 閱讀條款 ↗' : '閱讀模型授權條款 ↗'}</a>}
       {allParams.length > params.length || advanced ? <button className="parameter-toggle" onClick={() => setAdvanced(value => !value)}>{advanced ? '收起進階參數' : '更多模型參數'}<ChevronDown size={13} className={advanced ? 'rotated' : ''}/></button> : null}

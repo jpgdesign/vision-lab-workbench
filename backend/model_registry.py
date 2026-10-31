@@ -209,7 +209,7 @@ def checkpoint_metadata(path):
     if "retention" not in metadata and (folder / "retention.json").is_file():
         metadata["retention"] = _json(folder / "retention.json")
     return {"model_id": metadata.get("model_id"), "classes": metadata.get("classes", metadata.get("dataset_classes", [])),
-            **{key: metadata[key] for key in ("caption", "checkpoint_format", "base_classes", "training_mode",
+            **{key: metadata[key] for key in ("caption", "caption_mode", "caption_chunks", "checkpoint_format", "base_classes", "training_mode",
                                              "inference_input", "video_mode", "class_expansion", "retention",
                                              "score_semantics", "old_branch_unchanged") if key in metadata}}
 
