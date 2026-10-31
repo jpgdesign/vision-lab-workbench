@@ -1,0 +1,80 @@
+{
+  "repository": "https://github.com/Maelic/RelateAnything",
+  "commit": "fc626d0d58113efcc8b08252c168a7ad529a171f",
+  "code_license": "AGPL-3.0-only with NOTICE section7 attribution",
+  "weights_license": "DINOv3 License",
+  "sources": [
+    {
+      "path": "deploy/runtime.py",
+      "sha256": "b3ab73f3995fafebf302698a61819a23f5555f9e3bedfcfefe68fdf45991e9f8"
+    },
+    {
+      "path": "deploy/postprocess.py",
+      "sha256": "7261029b4537a0fbcd4a05369895023b4795187c3ed984ca881c270c4ab26953"
+    },
+    {
+      "path": "relsgg/scoring.py",
+      "sha256": "f17463248d42dba2ed31be810f5da136019e92f5092b6e88c5e6417ed2640421"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "bda3c728caf31b2fe79bbc7f6a9ba577eb87a7a1a8921c9d6ec54ae89fb1c625"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "sha256": "e03762127e89dae0c26e141c741492a0b1c7b314dfa98f54bf9dfa7249b55e0b"
+    }
+  ],
+  "download_manifest": {
+    "repository": "maelic/relsgg-convnext-large",
+    "revision": "3f320abdb0c579f685815089a08c472ae6928d4f",
+    "files": [
+      {
+        "name": "relateanything.json",
+        "bytes": 1840,
+        "sha256": "05db10b1c64df2b8954bcc22cd42bd12375797f79c941b3c8f876e600a7179b6",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/relateanything.json"
+      },
+      {
+        "name": "predicate_bank.npz",
+        "bytes": 469180,
+        "sha256": "d7e863f1609f1784767f6db69318ac8c23febcc000a005394885988d2fc514fd",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/predicate_bank.npz"
+      },
+      {
+        "name": "thresholds.json",
+        "bytes": 54621,
+        "sha256": "9135fc2628d1bb0acae359c57b6b78edc0ffb52d556b7928cde97b5b2a31ea98",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/thresholds.json"
+      },
+      {
+        "name": "calibration.json",
+        "bytes": 795,
+        "sha256": "704f7875f195b428307bb3cf8c4c101855dba159b9b2ab72f7cb0abe52a4fe3c",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/calibration.json"
+      },
+      {
+        "name": "config.json",
+        "bytes": 177,
+        "sha256": "0c31c9ff1588d121df99bd885ae78bda65e03da71c1d3c1cb99f08ba2ad42e5e",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/config.json"
+      },
+      {
+        "name": "README.md",
+        "bytes": 6635,
+        "sha256": "3ea595ff1897b56dce0da8d4c40aeaa23e979e5ac374e28bb2a25e9bdd61a055",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/README.md"
+      },
+      {
+        "name": "relateanything.onnx",
+        "bytes": 977613793,
+        "sha256": "3a064f93bf6bfc40c597de761b6ad54ad002a91611d65d5f6a34b4d419dfdb1f",
+        "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/relateanything.onnx"
+      }
+    ]
+  }
+}

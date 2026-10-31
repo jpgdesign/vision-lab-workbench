@@ -287,6 +287,18 @@ def test_api_rejects_cross_site_driving_local_gpu(api):
     assert client.get("/api/models", headers={"Origin": "http://localhost:5173"}).status_code == 200
 
 
+def test_local_homepage_cross_site_link_only_allows_top_level_navigation(api):
+    client, _ = api
+    navigation = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+    # Installation without a built frontend may return 404, never the origin guard.
+    assert client.get("/", headers=navigation).status_code in {200, 404}
+    assert client.get("/api/models", headers=navigation).status_code == 403
+    assert client.get("/", headers={**navigation, "Sec-Fetch-Dest": "iframe"}).status_code == 403
+    assert client.get("/", headers={**navigation, "Sec-Fetch-Mode": "no-cors"}).status_code == 403
+    assert client.post("/", headers=navigation).status_code == 403
+    assert client.get("/", headers={**navigation, "Origin": "https://outside.example"}).status_code == 403
+
+
 def test_job_validates_model_kind_params_and_registered_input(api):
     client, _ = api
     media = upload_image(client)

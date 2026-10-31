@@ -91,7 +91,7 @@ def choose_torch(system_info, requested="auto"):
 
 
 def build_plan(system_info, target_venv, *, profile="full", requested="auto", repair=False,
-               with_rfdetr_plus=False, with_dev=False, skip_frontend=False, target_exists=False):
+               with_rfdetr_plus=False, with_workflows=False, with_dev=False, skip_frontend=False, target_exists=False):
     target = Path(target_venv).resolve()
     wheel = choose_torch(system_info, requested)
     existing = system_info.get("torch", {}) if target_exists else {}
@@ -108,6 +108,8 @@ def build_plan(system_info, target_venv, *, profile="full", requested="auto", re
     requirements = ["requirements.txt" if profile == "full" else "requirements-base.txt"]
     if with_rfdetr_plus:
         requirements.append("requirements-rfdetr-plus.txt")
+    if with_workflows:
+        requirements.append("requirements-workflows.txt")
     if with_dev:
         requirements.append("requirements-dev.txt")
     notes = list(wheel["reasons"])
@@ -117,6 +119,8 @@ def build_plan(system_info, target_venv, *, profile="full", requested="auto", re
     notes.append("NVIDIA driver detection does not prove torch.cuda availability; the installed interpreter is checked separately.")
     if with_rfdetr_plus:
         notes.append("Optional rfdetr-plus has separate PML terms. Installation does not grant rights or record license acceptance.")
+    if with_workflows:
+        notes.append("Optional workflows install pinned CPU ONNX Runtime for RelateAnything. Pose/skeleton/relation weights remain separate, verified downloads.")
     return {"install_requested": False, "profile": profile, "venv": str(target),
             "python": str(venv_python(target, system_info["platform"]["system"])),
             "create_venv": not target_exists, "torch_action": "skip" if profile == "base" else "preserve" if preserve else "install",
@@ -190,6 +194,7 @@ def main(argv=None):
     parser.add_argument("--torch", choices=("auto", "cpu", "cu126", "cu128"), default="auto")
     parser.add_argument("--repair-torch", action="store_true", help="Explicitly replace an existing torch/torchvision pair")
     parser.add_argument("--with-rfdetr-plus", action="store_true", help="Opt in to the separate PML-licensed runtime; does not grant license rights")
+    parser.add_argument("--with-workflows", action="store_true", help="Install optional pinned CPU ONNX Runtime for local relation workflows; does not download weights")
     parser.add_argument("--with-dev", action="store_true", help="Install test dependencies")
     parser.add_argument("--skip-frontend", action="store_true", help="Do not run npm ci/build")
     parser.add_argument("--json", action="store_true", help="Print diagnostics and plan as JSON")
@@ -200,7 +205,7 @@ def main(argv=None):
     info = collect_system_info(ROOT, refresh=True, python_executable=target_python if exists else sys.executable)
     plan = build_plan(info, target, profile=args.profile, requested=args.torch,
                       repair=args.repair_torch, with_rfdetr_plus=args.with_rfdetr_plus,
-                      with_dev=args.with_dev, skip_frontend=args.skip_frontend, target_exists=exists)
+                      with_workflows=args.with_workflows, with_dev=args.with_dev, skip_frontend=args.skip_frontend, target_exists=exists)
     plan["install_requested"] = args.install
     if args.json:
         print(json.dumps({"system": info, "plan": plan}, ensure_ascii=False, indent=2))

@@ -4,13 +4,14 @@ A local visual workbench for comparing computer-vision models, running live-came
 
 **把圖片、影片、手機鏡頭與微調實驗放進同一個視覺化工作台。**
 
-Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時影像比較，以及資料集驗證、訓練監控與微調權重回測。運算在本機執行，服務預設只監聽 `127.0.0.1`。
+Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時影像比較，以及資料集驗證、訓練監控與微調權重回測。預設在本機運算，服務只監聽 `127.0.0.1`；選用應用工作檯的雲端視覺節點時，才會把取樣影像送往已設定的服務。
 
-[安裝與啟動](#安裝與啟動) · [預設模型下載](#預設模型下載) · [支援的模型與微調](#目前支援的模型與微調) · [教學素材](examples/README.md)
+[安裝與啟動](#安裝與啟動) · [多模型應用工作檯](#多模型應用工作檯) · [預設模型下載](#預設模型下載) · [支援的模型與微調](#目前支援的模型與微調) · [教學素材](examples/README.md)
 
 ## 功能
 
 - 圖片／影片推論畫布：新增區塊、拖曳排列、調整參數、比較預訓練與微調權重。
+- 多模型應用工作檯：連接偵測、骨架、追蹤、動作、物件關係與規則節點；提供八個可修改模板、流程驗證及圖片／影片／即時串流執行。
 - 推論區塊依內容自動增高，結果、下載連結與操作按鈕不會被固定高度裁切；預設寬度隨畫布調整，手動尺寸可按區塊標題上的「自動調整區塊尺寸」還原。
 - 素材若曾用於本機已完成工作的訓練集，選取框與勾號顯示紅色，並標示「已用於訓練」。以檔案內容比對，可辨識改名或重新上傳的相同檔案；只用於驗證或推論的素材不會因此標紅。
 - 推論模型保留在記憶體中，換圖片／影片或調整辨識參數時可直接重用；結果顯示是否重用、載入時間與總處理時間。
@@ -50,7 +51,7 @@ YOLOv12 分割使用原作者 Seg 分支權重；工作台內的相容接頭保�
 
 DINOv3 原始權重是視覺表徵骨幹，沒有 COCO 或 Kinetics 的分類輸出；推論輸出 pooled embedding 檔案與預覽，監督微調會建立線性分類頭。完整 7B 權重與所需環境都齊全時才允許執行；接頭存在不代表已下載完成，也不代表 12 GB GPU 能負擔完整 7B 參數微調。
 
-行為模型預設分析最近 4 秒，再均勻取樣架構所需的影格；它們輸出整段分類，不提供逐人追蹤或動作起訖定位。30 FPS 輸入不代表每秒完成 30 次分類。
+推論比較與即時比較中的行為模型預設分析最近 4 秒，再均勻取樣架構所需的影格；它們輸出整段分類，不直接提供逐人追蹤或動作起訖定位。「應用工作檯」可另外連接追蹤與個人裁切分類節點。30 FPS 輸入不代表每秒完成 30 次分類。
 
 ### 訓練選項
 
@@ -147,6 +148,73 @@ python setup.py --install --profile base
 RF-DETR 2XL 的 `rfdetr-plus` 為額外選配，不包含在預設安裝中。具備原模型所需使用權限後再使用安裝工具的 `--with-rfdetr-plus` 選項。工作台只記住使用者的確認；模型權利仍依原提供者條款。
 
 首次安裝會下載程式依賴；**模型權重另外準備**，安裝器不會擅自下載數十 GB 權重。完整安裝參數請執行 `python setup.py --help`。
+
+## 多模型應用工作檯
+
+「應用工作檯」把影像、偵測框、同一物件的追蹤、時間片段與事件連成一張有型別的流程圖。模型節點使用原有權重或已登錄的**單一模型**微調 checkpoint；目前不接受雙分支 bundle。骨架與物件關係使用下列額外權重，不需要另建微調資料集才能測試。
+
+### 安裝選配依賴與模型
+
+```bash
+# 先顯示計畫；第二行才安裝至專案隔離環境
+python setup.py --with-workflows
+python setup.py --install --with-workflows
+
+# 顯示下載計畫；加 --download 才下載
+python download_workflow_models.py
+python download_workflow_models.py --download --models pose skeleton relation
+python download_workflow_models.py --verify
+python launch.py
+```
+
+`--with-workflows` 加入固定版本 `onnxruntime==1.23.2` 的 CPU provider，不替換可用的 PyTorch／CUDA。原有偵測器仍需其推論依賴與權重；姿態與骨架需要 PyTorch，姿態另用 Ultralytics。Windows 的 ONNX Runtime 需要相容的 Microsoft Visual C++ 2015–2022 x64 Runtime；若缺少，關係節點會回報錯誤，其他本機節點仍可使用。
+
+| 應用模型 | 下載大小 | 官方來源與用途 | 授權 |
+|---|---:|---|---|
+| YOLO26n Pose | 7.88 MB | [官方權重](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-pose.pt)；每人 COCO 17 關節 | Ultralytics AGPL-3.0／原提供者商業方案 |
+| ST-GCN++ NTU120 XSub HRNet Joint | 5.92 MB | [PYSKL](https://github.com/kennymckormick/pyskl) · [官方權重](https://download.openmmlab.com/mmaction/pyskl/ckpt/stgcnpp/stgcnpp_ntu120_xsub_hrnet/j.pth)；固定 NTU120 動作分類 | 程式 Apache-2.0；權重與 NTU 資料條件依上游 |
+| RelateAnything ConvNeXt-Large | 978.15 MB | [原作者專案](https://github.com/Maelic/RelateAnything) · [固定模型版本](https://huggingface.co/maelic/relsgg-convnext-large/tree/3f320abdb0c579f685815089a08c472ae6928d4f)；ONNX、243 個預先計算的關係詞與設定 | 程式 AGPL-3.0-only 與署名條款；權重另遵循 DINOv3 License |
+
+三者合計約 **991.94 MB**，不含 Python 依賴、RAM／VRAM。只需要骨架時可使用 `--models pose skeleton`。下載器使用[固定來源、大小與 SHA256 清單](backend/assets/workflow_model_sources.json)，核對已存在的檔案、支援部分下載續傳；發現不同內容不會直接覆蓋，須明確指定 `--replace-invalid`。`--verify` 只核對、不下載。
+
+預設目錄為 `models/yolo26n_pose/`、`models/stgcnpp_ntu120/` 與 `models/relateanything_convnext_large/`。這三個應用模型也會在專案 `model_weights/`、專案上一層的 `model_weights/` 搜尋相同子目錄。下載器的 `--output-dir` 可更改存放根目錄，但任意外部目錄不會自動加入這三個節點的搜尋範圍；一般偵測／影片模型仍使用原有路徑登錄功能。
+
+### 八個可修改模板
+
+| 模板 | 主要節點 | 可測試的結果與必要條件 |
+|---|---|---|
+| 區域闖入與停留 | 偵測 → 追蹤 → 區域 | 進入、離開、停留、人數超限；需先設定多邊形區域 |
+| 骨架 → 時序動作 → 狀態事件 | Pose → 追蹤 → ST-GCN++ → 條件 | 同一人的 NTU120 動作；至少 30 個有效關節影格 |
+| 姿態轉換／跌倒候選 | Pose → 追蹤 → 幾何姿態 → 條件 | 站立快速轉成躺姿並持續的候選事件；不是訓練式跌倒分類器 |
+| 檢查區 → 作業區 → 出口 | Pose → 追蹤 → 區域 → 順序 | 同一身份的 `zone_enter:check`、`zone_enter:work`、`zone_enter:exit`；跳步與逾時事件 |
+| 影片動作 → 規則事件 | 影片分類 → 條件 | 使用 X3D、SlowFast、ViViT 或 VideoMAE V2；預設場景分類，個人模式須接人體追蹤 |
+| 骨架可見性＋PPE 檢查 | Pose／裝備偵測 → 追蹤 → PPE | 頭部或軀幹可見且連續未配對裝備才發候選；可換自行微調的 PPE checkpoint |
+| 物件 → 追蹤 → 關係辨識 | 偵測 → 追蹤 → RelateAnything | 有向的主體／關係／客體；可接條件節點建立關係持續事件 |
+| 事件＋雲端視覺判讀 | 偵測 → 區域事件／影像 → 雲端視覺 | 傳送取樣影像與上下文至已設定的服務；需有效金鑰及可用視覺模型 |
+
+在左側「模板」選擇「使用這個模板」，修改模型與參數，從輸出端拖曳到相容的輸入端，再選素材並驗證執行。區域可在影像預覽上編輯；流程可儲存在本機、重新開啟或匯出／匯入 JSON。即時來源沿用攝影機、虛擬攝影機與 VDO.Ninja 輸入；辨識更新速度由整張流程的模型成本決定，不等於來源 FPS。預檢會檢查連線、參數、模型路徑、依賴與關係詞，不會為了驗證流程載入大型模型。
+
+### 時間、身份與結果的範圍
+
+- **來源時間與追蹤**：停留、持續與順序以影片／串流的來源秒數計算。IoU 配對只匹配同類別，目前是 Hungarian 關聯；缺少 SciPy 時明示使用 deterministic greedy。遮擋超時會產生新 ID，交錯人群仍可能換 ID；這不是跨鏡頭 ReID。沒有本幀觀察就不輸出預測框，也不憑空判定離開區域。
+- **未知不是缺少**：關節低信心、遮擋、時間間隔過大會重設相關持續證據。PPE 需要可見性與裝備位置配對；通用 COCO 模型沒有安全帽／反光背心類別，應使用提示偵測或相容微調模型。幾何站立、蹲下、舉手、躺姿及跌倒候選不等於學習式動作分類。
+- **模型動作有固定類別**：ST-GCN++ 使用 NTU120 標籤；訓練來源是 HRNet 關節，本工具輸入 YOLO Pose，兩者的誤差分布不同。目前逐人填入第一個骨架位置，第二位置留空，不能視為完整雙人互動分類。RGB 影片分類也只辨識原有或微調的類別；個人裁切不等於精確動作定位。任意操作流程須先定義可觀察事件，再接順序規則，不能只輸入一段流程文字就宣稱已訓練完成。
+- **關係不是因果判斷**：RelateAnything 在 CPU 執行，每次最多 32 個物件框，採官方 448×448 輸入及校準。只接受隨附的 243 個關係詞；未知詞會在執行前拒絕，不會偷偷下載文字編碼器。關係持續時間需要主體與客體都具有穩定追蹤身份，不能把陣列索引當同一人。
+- **長時間執行**：規則歷史有時間與容量上限；已完成且不自動重設的順序，在該身份停止觀察超過 `max_gap_seconds` 後會過期。串流匯出最多保存 20,000 筆影格、100,000 筆事件與合計 256 MiB；達上限仍繼續即時處理，保留最新影像與最近 1,000 筆事件，結果的 `data_export` 會標記截斷。
+
+這些模板用於建立與測試應用流程。請用現場獨立標註影片評估漏報、誤報、遮擋及 ID 切換，不能把示範事件當作已驗證的安全判定。
+
+### 選配雲端視覺連線
+
+在伺服器電腦建立只包含 API key 的本機文字檔，再到工作檯「連接」輸入該檔案的**完整路徑**。後端讀取金鑰，設定檔只保存路徑與選用模型；流程 JSON、公開工作資訊與 API 回應不包含金鑰或該路徑。不要將金鑰檔放進原始碼或公開資料夾。
+
+目前接頭固定使用 `https://api.munolithsai.com/v1`，不接受自訂轉送 URL。設定時驗證模型列表，HTTP 401、連線失敗或沒有選定可用模型都不算連接成功；包含雲端節點的流程會被阻止執行，本機流程仍可使用。列出模型不代表每個模型都支援影像，請選服務提供的視覺模型；實際請求失敗會回報錯誤。只有執行含雲端節點的流程時，才會依取樣設定傳送影像。
+
+### 方法來源與署名
+
+區域與安全應用以 [ZoneGuard](https://github.com/K-saif/ZoneGuard)、[AI Safety Monitoring](https://github.com/nusRying/ai-safety-monitoring) 為**功能概念參照**。前者未提供明確 LICENSE，後者採 Proprietary / All Rights Reserved；本專案沒有複製兩者程式碼。流程模板與規則在本專案獨立實作。
+
+骨架模型保留 [PYSKL Apache-2.0 授權與來源紀錄](backend/vendor/pyskl_stgcnpp/NOTICE.md)。關係模組保留 [RelateAnything 授權與來源紀錄](backend/vendor/relateanything/NOTICE)，並在介面顯示 **[Based on RelateAnything by Maëlic Neau](https://github.com/Maelic/RelateAnything)**；其權重另受 [DINOv3 License](https://ai.meta.com/resources/models-and-libraries/dinov3-license/) 約束。原始碼的 AGPL 授權不會改寫模型、資料及第三方元件的條件。
 
 ## 預設模型下載
 
@@ -363,7 +431,7 @@ CI 測試不下載模型權重，不進行完整 GPU 訓練。新模型需同時
 
 ## 範圍與本機資料
 
-這是單人研究／教學工具，尚未提供多使用者權限、分散式訓練、任意神經網路節點編輯、資料標註、物件追蹤或正式 benchmark 自動評測。不要直接把本機 API 暴露到 Internet。
+這是單人研究／教學工具，尚未提供多使用者權限、分散式訓練、任意神經網路層編輯、資料標註、跨鏡頭身份辨識或正式 benchmark 自動評測。應用工作檯提供同來源的 IoU 物件追蹤與模型／規則連線。不要直接把本機 API 暴露到 Internet。
 
 除明確附帶來源與授權的 `examples/` 教學素材外，`runtime/`、模型權重、個人資料集與影片、訓練結果、環境及個人授權紀錄均不包含在本次發布中。要回報問題，請使用 [Issue 範本](.github/ISSUE_TEMPLATE/bug_report.md)，只附上已檢查過的環境資訊，不附 token、私有影像或完整個人路徑。
 

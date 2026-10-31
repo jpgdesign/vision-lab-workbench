@@ -20,6 +20,9 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+from .workflow_relations import prepare_windows_runtime
+prepare_windows_runtime(strict=False)
+
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -285,9 +288,12 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
                 allowed = False
             if not allowed:
                 return JSONResponse({"detail": "禁止外部網站操作本機模型服務。"}, status_code=403)
-        # Browser no-CORS requests can omit Origin. Fetch metadata closes that
-        # channel while retaining normal CLI clients and loopback development.
-        if request.headers.get("sec-fetch-site") == "cross-site" and not origin:
+        # Permit following a local homepage link in a top-level browser tab.
+        # Cross-site APIs, frames and no-CORS subresources remain blocked.
+        homepage_navigation = (request.method == "GET" and request.url.path == "/"
+                               and request.headers.get("sec-fetch-mode") == "navigate"
+                               and request.headers.get("sec-fetch-dest") == "document")
+        if request.headers.get("sec-fetch-site") == "cross-site" and not origin and not homepage_navigation:
             return JSONResponse({"detail": "禁止跨網站存取本機模型服務。"}, status_code=403)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -602,6 +608,8 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
 
     from .live import register_live_routes
     register_live_routes(application, manager, load_models, normalize_params, request_weights)
+    from .workflow_api import register_workflow_routes
+    register_workflow_routes(application, manager, media, load_models, normalize_params, request_weights, runtime)
 
     # Mount last so static frontend cannot swallow /api routes. SPA fallback is
     # unnecessary because the canvas uses in-page tabs instead of path routing.

@@ -1,0 +1,60 @@
+{
+  "repository": "https://github.com/kennymckormick/pyskl",
+  "commit": "f2bf3a6b08e2e8dec744692d64efdb187fd6719a",
+  "source_code_license": "Apache-2.0",
+  "upstream_files": [
+    {
+      "path": "pyskl/models/gcns/stgcn.py",
+      "sha256": "4e16eaf35a6fcc73a2e1879a6ee82877005c124945e97189716454d5e7d9c05a"
+    },
+    {
+      "path": "pyskl/models/gcns/utils/gcn.py",
+      "sha256": "1eb4d5c53116c38250037a1cebb8ebc94c3a9f284be18f0f51bc50c504854aba"
+    },
+    {
+      "path": "pyskl/models/gcns/utils/tcn.py",
+      "sha256": "86a072fa53a6649b02161a62aa270e3a46832903bb7c08fdf9d0af9c19350f74"
+    },
+    {
+      "path": "pyskl/models/gcns/utils/init_func.py",
+      "sha256": "8b0d53622d3d9bfccc5d550a10b28a93720bc995ce732b97600040f2196fef14"
+    },
+    {
+      "path": "pyskl/utils/graph.py",
+      "sha256": "53dc74c807e282e321fd8ad14ad2eeedec5764ac0136a4c1f20e93dd4d3b46a2"
+    },
+    {
+      "path": "pyskl/models/heads/simple_head.py",
+      "sha256": "332ebb3a6254d24d65d5ef612f66abad9526e9d81365a75126b800df4ffdf8b7"
+    },
+    {
+      "path": "pyskl/models/recognizers/recognizergcn.py",
+      "sha256": "0bad332a1ec56022b794e6fbf1d98ea6fb8ae74001363d3f1945536cb830776a"
+    },
+    {
+      "path": "pyskl/datasets/pipelines/pose_related.py",
+      "sha256": "bfc632c22213e0f186f39852457dfc5cafcedc30b94432cbd2aadb893e7e0f12"
+    },
+    {
+      "path": "pyskl/datasets/pipelines/sampling.py",
+      "sha256": "b7122426066604466d8ad970fb3ea3f951b1fe1d207b20980206971e0ac104fa"
+    },
+    {
+      "path": "configs/stgcn++/stgcn++_ntu120_xsub_hrnet/j.py",
+      "sha256": "aebeef329eb92947779e84b9671e5fbb551f917db52422994dc5776b1d0e677d"
+    },
+    {
+      "path": "tools/data/label_map/nturgbd_120.txt",
+      "sha256": "9ef3dce31dc1a3bd5e83c90e1d218d09334929a360562a81d3f630492541ef57"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "02c5c55e19772184872c6c455553b15e4acac4b3a757550e7374f47723868ce1"
+    }
+  ],
+  "checkpoint": {
+    "url": "https://download.openmmlab.com/mmaction/pyskl/ckpt/stgcnpp/stgcnpp_ntu120_xsub_hrnet/j.pth",
+    "bytes": 5915801,
+    "sha256": "c6e074210fa30c01081460665ce9c1c221ba4a60d7eeb10456cde6e8ac40486e"
+  }
+}

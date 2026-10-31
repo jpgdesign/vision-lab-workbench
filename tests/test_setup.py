@@ -104,6 +104,17 @@ def test_base_profile_omits_torch_and_plus_is_explicit_opt_in(tmp_path):
     assert setup.build_plan(hardware(), tmp_path, profile="base", with_rfdetr_plus=True)["errors"]
 
 
+def test_optional_workflows_pin_cpu_onnx_without_replacing_torch(tmp_path):
+    default = setup.build_plan(hardware(working=True), tmp_path, target_exists=True)
+    assert "requirements-workflows.txt" not in default["requirements"]
+    enabled = setup.build_plan(hardware(working=True), tmp_path, target_exists=True, with_workflows=True)
+    assert "requirements-workflows.txt" in enabled["requirements"]
+    assert enabled["torch_action"] == "preserve"
+    requirements = (ROOT / "requirements-workflows.txt").read_text()
+    assert "onnxruntime==1.23.2" in requirements
+    assert "onnxruntime-gpu" not in requirements
+
+
 def test_unsupported_python_reported_before_install(tmp_path):
     info = hardware()
     info["python"]["supported"] = False

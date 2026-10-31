@@ -15,6 +15,7 @@ import { inferenceOnlyCheckpoint } from './trainingExpansion';
 import ModelTaskFields from './ModelTaskFields';
 import GroundingTargetsControl from './GroundingTargetsControl';
 import { groundingParameterVisible, selectInferenceCheckpoint } from './groundingTrainingTargets';
+import { workflowLiveRequest } from './workflowLive';
 
 const inactiveStatuses = new Set(['completed', 'failed', 'cancelled']);
 const fileOnlyParams = new Set(['frame_stride', 'max_frames', 'num_clips', 'start_seconds']);
@@ -61,7 +62,22 @@ function ModelCard({ card, index, models, jobs, registeredCheckpoints, confirmLi
   </article>;
 }
 
-export default function LiveCamera({ models, jobs, system, confirmLicense, checkpoints = [] }) {
+function WorkflowLiveResult({ workflow, liveState, finished }) {
+  const result = liveState?.models?.find(item => String(item.key) === '0');
+  const events = Array.isArray(liveState?.events) ? liveState.events : [];
+  return <article className="live-model-card wf-live-result">
+    <header><span className="node-number"><Monitor size={16}/></span><div><strong>{workflow.name}</strong><small>{workflow.graph.nodes.length} 個節點 · {workflow.graph.edges.length} 條連線 · 固定流程快照</small></div></header>
+    <div className="wf-live-summary">{(workflow.labels || []).map((label, index) => <span key={index}>{label}</span>)}</div>
+    {workflow.graph.nodes.some(node => node.type === 'vlm') && <p className="wf-live-cloud-note">此流程包含雲端視覺判讀，取樣影像會傳送至設定的 API 服務。</p>}
+    <div className="live-result-preview">{result?.image_url ? <img src={result.image_url} alt={`${workflow.name} ${finished ? '最後' : '即時'}流程結果`}/> : <div className="empty-preview"><Monitor size={34} strokeWidth={1.2}/><strong>{result?.status === 'loading' ? '載入流程模型' : '等待即時流程'}</strong><span>{result?.message || '開啟攝影機或連接 VDO.Ninja，再按開始即時流程。'}</span></div>}<span className="preview-label">{finished ? '本次流程最後結果' : '流程即時輸出'}</span></div>
+    <div className="live-card-result"><div className="live-result-metrics"><span>流程推論 <b>{Number.isFinite(result?.inference_ms) ? `${result.inference_ms.toFixed(0)} ms` : '—'}</b></span><span>辨識更新 <b>{Number.isFinite(result?.update_hz) ? `${result.update_hz.toFixed(1)} FPS` : '—'}</b></span><span>已處理影格 <b>{result?.processed_frames ?? result?.frames ?? '—'}</b></span></div>{result?.message && <p className={result.status === 'failed' ? 'wf-error' : 'wf-hint'}>{result.message}</p>}{result?.stale && !finished && <p className="live-window-info">結果已 {result.age_seconds} 秒未更新，目前保留最後一次完成的影格。</p>}<div className="prediction-list">{(result?.predictions || []).slice(0, 16).map((prediction, index) => <span key={index}>{prediction.label}<b>{Number.isFinite(prediction.score) ? `${(prediction.score * 100).toFixed(1)}%` : ''}</b></span>)}</div>
+      {events.length > 0 && <div className="wf-live-events"><h3>最近事件</h3>{events.slice(-30).reverse().map((event, index) => <p key={index}><b>{Number.isFinite(Number(event.timestamp)) ? `${Number(event.timestamp).toFixed(1)}s` : event.timestamp || '—'}</b><span>{event.label || event.kind}{event.track_id != null ? ` · 追蹤 ${event.track_id}` : ''}</span></p>)}</div>}
+      {liveState?.node_stats && <details className="wf-stat-details"><summary>節點執行統計</summary><pre>{JSON.stringify(liveState.node_stats, null, 2)}</pre></details>}
+    </div>
+  </article>;
+}
+
+export default function LiveCamera({ models, jobs, system, confirmLicense, checkpoints = [], workflow = null }) {
   const selectableModels = models.filter(model => model.inference_supported && ['detection', 'segmentation', 'action'].includes(model.task));
   const availableModels = selectableModels.filter(model => model.available || model.environment_available && checkpointChoices(model.id, checkpoints, jobs).some(item => item.valid && !inferenceOnlyCheckpoint(item)));
   const [cards, setCards] = useState(() => { const model = availableModels.find(item => item.id === 'yolo26x') || availableModels[0]; return model ? [{ id: uid(), modelId: model.id, params: modelDefaults(model), checkpointJobId: '' }] : []; });
@@ -280,7 +296,7 @@ export default function LiveCamera({ models, jobs, system, confirmLicense, check
         if (value.live_state?.status === 'loading' || !sourceConnected) nextInterval = 500;
         if (value.live_state) {
           const results = (value.live_state.models || []).map(result => {
-            const measured = advanceFrameRate(ratesRef.current.get(result.key), Number(result.processed_frames), now);
+            const measured = advanceFrameRate(ratesRef.current.get(result.key), Number(result.processed_frames ?? result.frames), now);
             ratesRef.current.set(result.key, measured);
             return { ...result, update_hz: measured?.rate, age_seconds: measured?.ageSeconds ?? 0, stale: result.status === 'running' && measured?.ageSeconds >= 5 };
           });
@@ -293,11 +309,12 @@ export default function LiveCamera({ models, jobs, system, confirmLicense, check
     poll();
   }
   async function startLive() {
-    if (active || startingRef.current || cameraStatus !== 'ready' || !cards.length || duration.error || checkpointsMissing || unavailableDevice || weightsMissing) return;
+    if (active || startingRef.current || cameraStatus !== 'ready' || !hasTargets || duration.error || checkpointsMissing || unavailableDevice || weightsMissing) return;
     startingRef.current = true; setStarting(true); setError(''); setLiveState(null); setSession(null);
     const generation = generationRef.current;
     try {
-      const response = await api('/live/sessions', { method: 'POST', body: { models: cards.map(card => ({ model_id: card.modelId, params: { ...card.params, ...(availableModels.find(model => model.id === card.modelId)?.license_accepted === true ? { accept_platform_license: true } : {}) }, ...checkpointRequest(card) })), capture_fps: captureFps, max_duration_seconds: duration.seconds } });
+      const body = workflow ? workflowLiveRequest(workflow, captureFps, duration.seconds) : { models: cards.map(card => ({ model_id: card.modelId, params: { ...card.params, ...(availableModels.find(model => model.id === card.modelId)?.license_accepted === true ? { accept_platform_license: true } : {}) }, ...checkpointRequest(card) })), capture_fps: captureFps, max_duration_seconds: duration.seconds };
+      const response = await api(workflow ? '/workflows/live' : '/live/sessions', { method: 'POST', body });
       const value = response.session || response.job || response;
       if (!value.id) throw new Error('伺服器沒有回傳即時任務 ID。');
       if (!mountedRef.current || generation !== generationRef.current || (!streamRef.current && !vdoRef.current && !vdoPeerRef.current?.stream)) { stopRemote(value.id); return; }
@@ -308,16 +325,17 @@ export default function LiveCamera({ models, jobs, system, confirmLicense, check
   }
   function updateCard(id, patch) { setCards(previous => previous.map(card => card.id === id ? { ...card, ...patch } : card)); setLiveState(null); setSession(null); }
   function addCard() { const model = availableModels.find(item => !cards.some(card => card.modelId === item.id)) || availableModels[0]; if (model && cards.length < 4) { setCards(previous => [...previous, { id: uid(), modelId: model.id, params: modelDefaults(model), checkpointJobId: '' }]); setLiveState(null); setSession(null); } }
-  const licenseMissing = cards.some(card => { const model = availableModels.find(model => model.id === card.modelId); return model?.license_url && model.license_accepted !== true && !card.params.accept_platform_license; });
-  const checkpointsMissing = cards.some(card => checkpointUnavailable(card, checkpointChoices(card.modelId, checkpoints, jobs)));
-  const unavailableDevice = cards.some(card => !deviceAvailable(card.params.device, system));
-  const bundleSelected = cards.some(card => checkpointChoices(card.modelId, checkpoints, jobs).some(item => item.id === selectedCheckpoint(card) && inferenceOnlyCheckpoint(item)));
-  const weightsMissing = bundleSelected || cards.some(card => !canRunWithWeights(availableModels.find(model => model.id === card.modelId), card, checkpointChoices(card.modelId, checkpoints, jobs)));
+  const hasTargets = workflow ? Boolean(workflow.graph.nodes.length) : Boolean(cards.length);
+  const licenseMissing = !workflow && cards.some(card => { const model = availableModels.find(model => model.id === card.modelId); return model?.license_url && model.license_accepted !== true && !card.params.accept_platform_license; });
+  const checkpointsMissing = !workflow && cards.some(card => checkpointUnavailable(card, checkpointChoices(card.modelId, checkpoints, jobs)));
+  const unavailableDevice = workflow ? !deviceAvailable(workflow.options?.device, system) : cards.some(card => !deviceAvailable(card.params.device, system));
+  const bundleSelected = !workflow && cards.some(card => checkpointChoices(card.modelId, checkpoints, jobs).some(item => item.id === selectedCheckpoint(card) && inferenceOnlyCheckpoint(item)));
+  const weightsMissing = !workflow && (bundleSelected || cards.some(card => !canRunWithWeights(availableModels.find(model => model.id === card.modelId), card, checkpointChoices(card.modelId, checkpoints, jobs))));
   const finished = Boolean(session && inactiveStatuses.has(session.status));
   const sessionLabel = starting ? '建立即時任務' : stopping ? '正在停止' : session && !finished ? (liveState?.status === 'loading' ? '載入模型中' : '即時任務執行中') : cameraStatus === 'ready' ? (sourceMode === 'vdo' ? 'VDO.Ninja 已連線' : '攝影機預覽中') : cameraStatus === 'opening' && sourceMode === 'vdo' ? '等待 VDO.Ninja 影像' : '影像來源未開啟';
   return <main className="scroll-page live-page">
-    <div className="page-intro"><div><span className="eyebrow"><span/>LIVE VISION</span><h1>接上鏡頭，觀察當下<span className="accent-dot">。</span></h1><p>USB、手機虛擬攝影機與遠端影像，共用一個即時比較畫面。</p></div><button className="button secondary" onClick={() => setConnectionHelp(value => !value)}><CircleHelp size={16}/>{connectionHelp ? '收起接入說明' : '手機與跨網路接入'}</button></div>
-    {connectionHelp && <section className="live-connection-help"><div><Camera size={20}/><h3>USB／同一個 Wi-Fi</h3><p>手機安裝 iVCam，電腦安裝 Windows 用戶端。連線成功後，開啟攝影機並選取 iVCam。</p><a href="https://www.e2esoft.com/ivcam/" target="_blank" rel="noreferrer">iVCam 官方下載與說明 <ExternalLink size={12}/></a></div><div><Wifi size={20}/><h3>VDO.Ninja 直接接入</h3><p>手機以 VDO.Ninja 分享鏡頭，將 VIEW 觀看連結貼入左側「VDO.Ninja 連結」。按下連接，看到影像後即可開始辨識。手機需保持分享頁面開啟。</p><a href="https://docs.vdo.ninja/getting-started/mobile-phone-camera-into-webcam" target="_blank" rel="noreferrer">VDO.Ninja 官方操作說明 <ExternalLink size={12}/></a></div><div><Monitor size={20}/><h3>跨網路影像，本機運算</h3><p>手機可以使用另一個網路或 4G、5G，模型仍在這台電腦執行。若已用 OBS 轉接，選「攝影機裝置」中的 OBS Virtual Camera 即可。</p><span>跨網路延遲與穩定度取決於連線品質。</span></div></section>}
+    <div className="page-intro"><div><span className="eyebrow"><span/>{workflow ? 'LIVE APPLICATION' : 'LIVE VISION'}</span><h1>{workflow ? '在鏡頭上執行應用流程' : '接上鏡頭，觀察當下'}<span className="accent-dot">。</span></h1><p>{workflow ? `${workflow.name} · 使用目前流程快照，調整節點前請先停止並返回畫布。` : 'USB、手機虛擬攝影機與遠端影像，共用一個即時比較畫面。'}</p></div><button className="button secondary" onClick={() => setConnectionHelp(value => !value)}><CircleHelp size={16}/>{connectionHelp ? '收起接入說明' : '手機與跨網路接入'}</button></div>
+    {connectionHelp && <section className="live-connection-help"><div><Camera size={20}/><h3>USB／同一個 Wi-Fi</h3><p>手機安裝 iVCam，電腦安裝 Windows 用戶端。連線成功後，開啟攝影機並選取 iVCam。</p><a href="https://www.e2esoft.com/ivcam/" target="_blank" rel="noreferrer">iVCam 官方下載與說明 <ExternalLink size={12}/></a></div><div><Wifi size={20}/><h3>VDO.Ninja 直接接入</h3><p>手機以 VDO.Ninja 分享鏡頭，將 VIEW 觀看連結貼入左側「VDO.Ninja 連結」。按下連接，看到影像後即可開始辨識。手機需保持分享頁面開啟。</p><a href="https://docs.vdo.ninja/getting-started/mobile-phone-camera-into-webcam" target="_blank" rel="noreferrer">VDO.Ninja 官方操作說明 <ExternalLink size={12}/></a></div><div><Monitor size={20}/><h3>跨網路影像接入</h3><p>{workflow?.graph.nodes.some(node => node.type === 'vlm') ? '手機可使用另一個網路或 4G、5G。本機節點在這台電腦執行；雲端節點會將取樣影像送至設定的 API。' : '手機可以使用另一個網路或 4G、5G，模型仍在這台電腦執行。若已用 OBS 轉接，選「攝影機裝置」中的 OBS Virtual Camera 即可。'}</p><span>跨網路延遲與穩定度取決於連線品質。</span></div></section>}
     <div className="live-layout">
       <aside className="live-source-panel">
         <div className="panel-heading"><span><Camera size={17}/>影像來源</span><span className={`live-source-status ${cameraStatus === 'ready' ? 'ready' : ''}`}><i/>{cameraStatus === 'ready' ? '已連線' : cameraStatus === 'opening' ? '連接中' : '未連線'}</span></div>
@@ -347,7 +365,7 @@ export default function LiveCamera({ models, jobs, system, confirmLicense, check
             {duration.error && <p id="live-duration-error" className="live-duration-error" role="alert">{duration.error}</p>}
           </div>
           <div className="live-session-status"><i className={active ? 'active' : ''}/><span>{sessionLabel}<small>時間限制：{session ? formatLiveDuration(session.max_duration_seconds) : duration.label || '請輸入有效時間'}</small></span></div>
-          <button className="button primary full" disabled={active || cameraStatus !== 'ready' || !cards.length || licenseMissing || checkpointsMissing || unavailableDevice || weightsMissing || Boolean(duration.error)} title={duration.error || (weightsMissing ? '請選擇可用的原始或微調權重' : '') || (unavailableDevice ? '選取的運算裝置目前不可用' : '') || (checkpointsMissing ? '選取的權重已不可用，請重新選擇' : '') || (licenseMissing ? '請先閱讀 RF-DETR 授權並勾選確認' : '')} onClick={startLive}>{starting ? <LoaderCircle className="spin" size={15}/> : <Play size={14} fill="currentColor"/>}開始即時辨識</button>
+          <button className="button primary full" disabled={active || cameraStatus !== 'ready' || !hasTargets || licenseMissing || checkpointsMissing || unavailableDevice || weightsMissing || Boolean(duration.error)} title={duration.error || (weightsMissing ? '請選擇可用的原始或微調權重' : '') || (unavailableDevice ? '選取的運算裝置目前不可用' : '') || (checkpointsMissing ? '選取的權重已不可用，請重新選擇' : '') || (licenseMissing ? '請先閱讀 RF-DETR 授權並勾選確認' : '')} onClick={startLive}>{starting ? <LoaderCircle className="spin" size={15}/> : <Play size={14} fill="currentColor"/>}{workflow ? '開始即時流程' : '開始即時辨識'}</button>
           <button className="button secondary full" disabled={cameraStatus === 'idle' && !active || stopping} onClick={() => stopAll()}><Square size={13}/>{sourceMode === 'vdo' ? '停止並中斷連線' : '停止並關閉攝影機'}</button>
           {weightsMissing && !checkpointsMissing && <p className="live-license-notice">請為每個區塊選擇可用的原始或微調權重。</p>}{unavailableDevice && <p className="live-license-notice">選取的運算裝置目前不可用，請展開模型參數重新選擇。</p>}{checkpointsMissing && <p className="live-license-notice">選取的權重已不可用，請重新選擇或在模型與任務檢查路徑。</p>}{licenseMissing && <p className="live-license-notice">RF-DETR 需要先閱讀授權並勾選確認。</p>}
           <p className="live-source-note">離開此頁會停止影像來源；即時辨識期間，其他推論與訓練會等待。</p>
@@ -355,12 +373,12 @@ export default function LiveCamera({ models, jobs, system, confirmLicense, check
           {session?.id && <small className="live-session-id">任務 {session.id.slice(0, 8)} · {finished ? statusNames[session.status] : `${captureStats.count} 個影格已送出`}</small>}
         </div>
       </aside>
-      <section className="live-comparison"><div className="live-comparison-heading"><div><h2>即時比較 <span>{cards.length} / 4</span></h2><p>每個區塊可選不同模型、參數或微調權重。調整設定前請先停止。</p></div><button className="button primary small" disabled={active || cards.length >= 4 || !availableModels.length} onClick={addCard}><Plus size={15}/>新增區塊</button></div>
+      <section className="live-comparison"><div className="live-comparison-heading"><div><h2>{workflow ? '流程即時輸出' : '即時比較'} <span>{workflow ? `${workflow.graph.nodes.length} 個節點` : `${cards.length} / 4`}</span></h2><p>{workflow ? '既有攝影機與 VDO.Ninja 接入共用同一套傳輸；所有節點依流程處理收到的影格。' : '每個區塊可選不同模型、參數或微調權重。調整設定前請先停止。'}</p></div>{!workflow && <button className="button primary small" disabled={active || cards.length >= 4 || !availableModels.length} onClick={addCard}><Plus size={15}/>新增區塊</button>}</div>
         {error && <div className="live-error" role="alert"><CircleHelp size={17}/><span>{error}</span></div>}
         {bundleSelected && <div className="live-error" role="alert">已選雙分支模型，目前請改用圖片／影片推論比較；即時串流需選單一模型權重。</div>}
         {finished && <div className="live-finished-note">{session.status === 'failed' ? '即時任務失敗。' : '即時任務已結束。'}以下保留本次最後一次收到的結果，並非即時影像。</div>}
-        <div className="live-model-grid">{cards.map((card, index) => <ModelCard key={card.id} card={card} index={index} models={selectableModels} jobs={jobs} registeredCheckpoints={checkpoints} confirmLicense={confirmLicense} disabled={active} result={liveState?.models?.find(result => String(result.key) === String(index))} finished={finished} onChange={patch => updateCard(card.id, patch)} onRemove={() => { setCards(previous => previous.filter(item => item.id !== card.id)); setLiveState(null); setSession(null); }}/>)}</div>
-        {!cards.length && <div className="live-empty"><Monitor size={32}/><h3>新增一個即時比較區塊</h3><p>先從 YOLO26 開始，再加入其他模型觀察速度與效果。</p></div>}
+        {workflow ? <WorkflowLiveResult workflow={workflow} liveState={liveState} finished={finished}/> : <div className="live-model-grid">{cards.map((card, index) => <ModelCard key={card.id} card={card} index={index} models={selectableModels} jobs={jobs} registeredCheckpoints={checkpoints} confirmLicense={confirmLicense} disabled={active} result={liveState?.models?.find(result => String(result.key) === String(index))} finished={finished} onChange={patch => updateCard(card.id, patch)} onRemove={() => { setCards(previous => previous.filter(item => item.id !== card.id)); setLiveState(null); setSession(null); }}/>)}</div>}
+        {!workflow && !cards.length && <div className="live-empty"><Monitor size={32}/><h3>新增一個即時比較區塊</h3><p>先從 YOLO26 開始，再加入其他模型觀察速度與效果。</p></div>}
       </section>
     </div><canvas ref={canvasRef} hidden/>
   </main>;

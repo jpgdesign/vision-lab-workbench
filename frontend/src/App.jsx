@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Aperture, Boxes, Camera, Check, CircleHelp, Cpu, LayoutDashboard, LoaderCircle, RefreshCw, ScanLine, Settings2, X } from 'lucide-react';
+import { Aperture, Boxes, Camera, Check, CircleHelp, Cpu, GitBranch, LayoutDashboard, LoaderCircle, RefreshCw, ScanLine, Settings2, X } from 'lucide-react';
 import { api, activeJob } from './api';
 import InferenceCanvas from './InferenceCanvas';
 import Training from './Training';
 import ModelLibrary from './ModelLibrary';
 import LiveCamera from './LiveCamera';
+import WorkflowCanvas from './WorkflowCanvas';
 import { applySystemDevices } from './systemDevices';
 import { JobPoller, mergeJobSnapshot, mergeJobUpdate } from './jobPolling';
 import { completedTrainingSignature, mergeMediaUsageSnapshot } from './mediaTrainingUsage';
@@ -79,6 +80,14 @@ export default function App() {
     try { const data = await api(`/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }); const job = data.job || data; jobsRef.current = mergeJobUpdate(jobsRef.current, job); setJobs(jobsRef.current); jobPoller.current?.wake(); notify('已送出取消要求。'); }
     catch (error) { notify(error.message, true); }
   }
+  async function submitWorkflow(payload) {
+    const response = await api('/workflows/run', { method: 'POST', body: payload });
+    const job = response.job || response;
+    jobsRef.current = mergeJobUpdate(jobsRef.current, job); setJobs(jobsRef.current);
+    jobPoller.current?.wake();
+    notify('應用流程已加入執行佇列。');
+    return job;
+  }
   async function uploadMedia(file) {
     const form = new FormData(); form.append('file', file);
     const data = await api('/media', { method: 'POST', body: form }); const item = data.media || data;
@@ -102,6 +111,7 @@ export default function App() {
       <nav className="top-nav" aria-label="工作區">
         <button className={page === 'inference' ? 'active' : ''} onClick={() => setPage('inference')}><ScanLine size={17} />推論比較</button>
         <button className={page === 'live' ? 'active' : ''} onClick={() => setPage('live')}><Camera size={17} />即時攝影機</button>
+        <button className={page === 'workflow' ? 'active' : ''} onClick={() => setPage('workflow')}><GitBranch size={17} />應用工作檯</button>
         <button className={page === 'training' ? 'active' : ''} onClick={() => setPage('training')}><Settings2 size={17} />微調訓練</button>
         <button className={page === 'models' ? 'active' : ''} onClick={() => setPage('models')}><Boxes size={17} />模型與任務{runningCount > 0 && <b className="nav-count">{runningCount}</b>}</button>
       </nav>
@@ -111,10 +121,11 @@ export default function App() {
     {loading && !models.length ? <div className="loading-page"><LoaderCircle className="spin" size={26}/><h2>正在連接研究工作台</h2><p>讀取本機模型、教學素材與任務紀錄</p>{connectionError && <button className="button secondary" onClick={refresh}>重試</button>}</div> : <>
       <div style={{ display: page === 'inference' ? 'contents' : 'none' }}><InferenceCanvas {...shared} visible={page === 'inference'} /></div>
       {page === 'live' && <LiveCamera {...shared} />}
+      {page === 'workflow' && <WorkflowCanvas {...shared} submitWorkflow={submitWorkflow} />}
       {page === 'training' && <Training {...shared} />}
       {page === 'models' && <ModelLibrary {...shared} refresh={refresh} />}
     </>}
-    <footer className="app-status"><span><span className="status-dot" />所有檔案與運算保留在本機</span><div><span><Cpu size={12} />{environmentLabel}</span><span>{usableGpu?.memory_total_bytes ? `${(usableGpu.memory_total_bytes / 1024 ** 3).toFixed(0)} GB VRAM` : ''}</span><span>{runningCount ? `${runningCount} 個任務處理中` : '佇列閒置'}</span></div><span>VISION LAB <b>v1.0</b></span></footer>
+    <footer className="app-status"><span title="本機模型使用本機檔案與算力；流程中的雲端 API 節點會將影像送至設定的外部服務。"><span className="status-dot" />本機模型在本機運算 · 雲端 API 節點會傳送影像</span><div><span><Cpu size={12} />{environmentLabel}</span><span>{usableGpu?.memory_total_bytes ? `${(usableGpu.memory_total_bytes / 1024 ** 3).toFixed(0)} GB VRAM` : ''}</span><span>{runningCount ? `${runningCount} 個任務處理中` : '佇列閒置'}</span></div><span>VISION LAB <b>v1.0</b></span></footer>
     {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role="status">{toast.error ? <CircleHelp size={18} /> : <Check size={18}/>}<span>{toast.message}</span><button className="icon-button" onClick={() => setToast(null)} aria-label="關閉訊息"><X size={15}/></button></div>}
     {help && <div className="modal-backdrop" onClick={() => setHelp(false)}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="help-title" onClick={event => event.stopPropagation()}><button className="icon-button modal-close" onClick={() => setHelp(false)} aria-label="關閉說明"><X size={20}/></button><span className="eyebrow">GETTING STARTED</span><h2 id="help-title">從一張影像，開始比較。</h2><div className="help-step"><b>01</b><div><h3>選擇素材，新增比較區塊</h3><p>左側選取教學圖片或上傳影片。開啟「共享輸入」即可讓每個區塊比較同一份素材。</p></div></div><div className="help-step"><b>02</b><div><h3>選模型、調參數，按下開始</h3><p>每張卡片獨立設定。拖動卡片標題可排列，選取後拖動邊角可調整大小；滑鼠滾輪縮放畫布。</p></div></div><div className="help-step"><b>03</b><div><h3>驗證資料集，再啟動微調</h3><p>依模型選取支援格式，使用本機資料夾或 ZIP。只有通過驗證的資料集能開始訓練；模型支援範圍與限制會直接顯示。</p></div></div><div className="note-box">所有推論與訓練共用單一序列佇列。畫布上的數據只來自實際執行的任務；尚未完成的項目不會顯示模擬結果。</div><button className="button primary full" onClick={() => setHelp(false)}>開始使用 <LayoutDashboard size={16}/></button></section></div>}
   </div>;

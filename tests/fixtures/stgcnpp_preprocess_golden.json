@@ -1,0 +1,21 @@
+{
+  "upstream": "https://github.com/kennymckormick/pyskl",
+  "commit": "f2bf3a6b08e2e8dec744692d64efdb187fd6719a",
+  "transforms": [
+    "PreNormalize2D",
+    "GenSkeFeat(j) identity",
+    "UniformSampleFrames(clip_len=100,num_clips=1,test_mode=True,seed=255)",
+    "PoseDecode",
+    "FormatGCNInput(num_person=2,mode=zero)"
+  ],
+  "generation": "Unmodified upstream class definitions (registration decorators removed); NumPy RandomState(T) inputs with confidence 0.2..1 and nose confidence .005",
+  "image_size": [
+    1280,
+    720
+  ],
+  "source_frames": [
+    50,
+    150,
+    337
+  ]
+}

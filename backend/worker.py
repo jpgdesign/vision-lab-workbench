@@ -9,6 +9,9 @@ import sys
 import time
 import traceback
 
+from .workflow_relations import prepare_windows_runtime
+prepare_windows_runtime(strict=False)
+
 
 def configure_environment(output):
     output.mkdir(parents=True, exist_ok=True)
@@ -46,8 +49,15 @@ def execute_job(request_path, output, *, inference_runner=None):
             from .training import run_training
             result = run_training(request, output, emit)
         elif request["kind"] == "live":
-            from .live_inference import run_live
-            result = run_live(request, output, emit)
+            if request.get("workflow_graph"):
+                from .workflow_runtime import run_workflow_live
+                result = run_workflow_live(request, output, emit)
+            else:
+                from .live_inference import run_live
+                result = run_live(request, output, emit)
+        elif request["kind"] == "workflow":
+            from .workflow_runtime import run_workflow
+            result = run_workflow(request, output, emit)
         else:
             raise ValueError("不支援的工作類型")
         payload = {"status": "completed", "result": result}

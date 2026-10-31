@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "yolo26n_pose",
+      "alias": "pose",
+      "name": "YOLO26n Pose (COCO17)",
+      "code_license": "AGPL-3.0",
+      "weight_license": "AGPL-3.0",
+      "source": "https://github.com/ultralytics/ultralytics",
+      "files": [
+        {
+          "name": "yolo26n-pose.pt",
+          "url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-pose.pt",
+          "bytes": 7878574,
+          "sha256": "eb3bb8268828aeaf515cec23a4bfafd793944a86fe9af94ba7823609c14522a9"
+        }
+      ]
+    },
+    {
+      "id": "stgcnpp_ntu120",
+      "alias": "skeleton",
+      "name": "ST-GCN++ NTU120 XSub HRNet Joint",
+      "code_license": "Apache-2.0",
+      "weight_license": "See official PYSKL checkpoint and NTU data terms",
+      "source": "https://github.com/kennymckormick/pyskl",
+      "files": [
+        {
+          "name": "stgcnpp_ntu120_hrnet_j.pth",
+          "url": "https://download.openmmlab.com/mmaction/pyskl/ckpt/stgcnpp/stgcnpp_ntu120_xsub_hrnet/j.pth",
+          "bytes": 5915801,
+          "sha256": "c6e074210fa30c01081460665ce9c1c221ba4a60d7eeb10456cde6e8ac40486e"
+        }
+      ]
+    },
+    {
+      "id": "relateanything_convnext_large",
+      "alias": "relation",
+      "name": "RelateAnything ConvNeXt-Large ONNX",
+      "code_license": "AGPL-3.0-only with attribution notice",
+      "weight_license": "DINOv3 License",
+      "weight_license_url": "https://ai.meta.com/resources/models-and-libraries/dinov3-license/",
+      "source": "https://github.com/Maelic/RelateAnything",
+      "repository": "maelic/relsgg-convnext-large",
+      "revision": "3f320abdb0c579f685815089a08c472ae6928d4f",
+      "files": [
+        {
+          "name": "relateanything.json",
+          "bytes": 1840,
+          "sha256": "05db10b1c64df2b8954bcc22cd42bd12375797f79c941b3c8f876e600a7179b6",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/relateanything.json"
+        },
+        {
+          "name": "predicate_bank.npz",
+          "bytes": 469180,
+          "sha256": "d7e863f1609f1784767f6db69318ac8c23febcc000a005394885988d2fc514fd",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/predicate_bank.npz"
+        },
+        {
+          "name": "thresholds.json",
+          "bytes": 54621,
+          "sha256": "9135fc2628d1bb0acae359c57b6b78edc0ffb52d556b7928cde97b5b2a31ea98",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/thresholds.json"
+        },
+        {
+          "name": "calibration.json",
+          "bytes": 795,
+          "sha256": "704f7875f195b428307bb3cf8c4c101855dba159b9b2ab72f7cb0abe52a4fe3c",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/calibration.json"
+        },
+        {
+          "name": "config.json",
+          "bytes": 177,
+          "sha256": "0c31c9ff1588d121df99bd885ae78bda65e03da71c1d3c1cb99f08ba2ad42e5e",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/config.json"
+        },
+        {
+          "name": "README.md",
+          "bytes": 6635,
+          "sha256": "3ea595ff1897b56dce0da8d4c40aeaa23e979e5ac374e28bb2a25e9bdd61a055",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/README.md"
+        },
+        {
+          "name": "relateanything.onnx",
+          "bytes": 977613793,
+          "sha256": "3a064f93bf6bfc40c597de761b6ad54ad002a91611d65d5f6a34b4d419dfdb1f",
+          "url": "https://huggingface.co/maelic/relsgg-convnext-large/resolve/3f320abdb0c579f685815089a08c472ae6928d4f/relateanything.onnx"
+        }
+      ]
+    }
+  ]
+}

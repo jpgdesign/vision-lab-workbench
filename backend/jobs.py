@@ -118,7 +118,7 @@ class JobManager:
             request["id"] = job_id
             write_json_atomic(directory / "request.json", request)
             job = {"id": job_id, "kind": request["kind"], "model_id": request["model_id"], "status": "queued", "progress": 0.0, "message": "等待 GPU 執行", "created_at": now_iso(), "params": request.get("params", {}), "logs": [], "metrics": [], "_artifacts": []}
-            for field in ("media_id", "dataset_id", "checkpoint_job_id", "checkpoint_id", "training_mode", "replay_dataset_id", "class_aliases", "base_class_names"):
+            for field in ("media_id", "dataset_id", "checkpoint_job_id", "checkpoint_id", "training_mode", "replay_dataset_id", "class_aliases", "base_class_names", "workflow_name"):
                 if field in request:
                     job[field] = request[field]
             if request["kind"] == "live":
@@ -445,6 +445,9 @@ class JobManager:
                         if metric:
                             job["metrics"] = (job["metrics"] + [metric])[-10000:]
                             changed = True
+                    elif kind == "node" and isinstance(event.get("node_stats"), list):
+                        job["node_stats"] = event["node_stats"][:48]
+                        changed = True
                     elif kind == "log" and isinstance(event.get("message"), str):
                         job["logs"] = (job["logs"] + [event["message"][:4000]])[-300:]
                         changed = True

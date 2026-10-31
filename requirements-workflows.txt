@@ -1,0 +1,2 @@
+# Optional local relation adapter; CPU provider only. No PyTorch/CUDA replacement.
+onnxruntime==1.23.2
