@@ -1,0 +1,41 @@
+.training-mode { margin-top: 20px; padding: 18px; border: 1px solid #384f41; border-radius: 12px; background: #14221a; }
+.training-mode > p, .replay-dataset > p, .class-aliases > p, .training-source-note { color: #9eb5a7; font-size: 12px; line-height: 1.7; margin: 10px 0; }
+.training-mode h3, .replay-dataset h3, .expansion-preview h3, .retention-summary h3 { font-size: 13px; margin: 0 0 10px; color: #c3dfcf; }
+.training-mode .field + .field { margin-top: 14px; }
+.replay-dataset { border-top: 1px solid #34473b; padding-top: 17px; margin-top: 17px; }
+.replay-dataset summary, .class-aliases summary, .union-classes summary { cursor: pointer; color: #b5cbbf; font-size: 12px; }
+.replay-dataset details, .class-aliases { margin-top: 16px; }
+.replay-import { padding-top: 14px; display: grid; gap: 12px; }
+.replay-import-buttons, .replay-selection { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.replay-selection { color: #aedec3 !important; }
+.alias-row { display: grid; grid-template-columns: minmax(0, 1fr) 15px minmax(0, 1fr) 30px; gap: 7px; align-items: end; margin: 12px 0; }
+.alias-row > span { align-self: center; padding-top: 25px; color: #8bac99; }
+.alias-row .field + .field { margin: 0; }
+.alias-row select, .alias-row input { min-width: 0; width: 100%; }
+.expansion-preflight-button { margin-top: 18px; }
+.expansion-preview { padding: 16px; margin-top: 14px; border: 1px solid #765e37; border-radius: 9px; background: #1f241b; }
+.expansion-preview.valid { border-color: #456f53; background: #182b1f; }
+.expansion-preview h3 { display: flex; align-items: center; gap: 7px; }
+.expansion-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px 0 16px; }
+.expansion-counts span { display: grid; gap: 5px; color: #99b3a3; font-size: 11px; }
+.expansion-counts b { color: #d3e9db; font-size: 22px; font-weight: 500; }
+.coverage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 13px; }
+.coverage-grid details { padding: 10px; background: #112017; border-radius: 6px; font-size: 11px; min-width: 0; }
+.coverage-grid summary { cursor: pointer; color: #a9c6b5; }
+.coverage-grid strong { display: block; font-weight: 400; margin-top: 6px; }
+.coverage-grid p, .union-classes p { font-size: 11px; line-height: 1.7; color: #aac3b5; overflow-wrap: anywhere; }
+.coverage-grid ul { list-style: none; padding: 0; max-height: 180px; overflow: auto; }
+.coverage-grid li { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; color: #adc4b7; }
+.coverage-grid li span { overflow-wrap: anywhere; }
+.retention-summary { margin: 16px 0; padding: 14px; background: #14241b; border: 1px solid #385540; border-radius: 10px; }
+.retention-summary h3 span { font-size: 11px; font-weight: 400; margin-left: 6px; color: #9ab8a6; }
+.retention-table-wrap { overflow-x: auto; }
+.retention-summary table { border-collapse: collapse; font-size: 11px; width: 100%; white-space: nowrap; }
+.retention-summary th, .retention-summary td { padding: 10px 5px; text-align: right; border-bottom: 1px solid #31483a; color: #bdd3c5; }
+.retention-summary th:first-child { text-align: left; }
+.retention-summary th { font-weight: 500; }
+.retention-summary p, .retention-summary small { font-size: 11px; line-height: 1.7; color: #9cb6a7; overflow-wrap: anywhere; }
+.metric-decreased { color: #e4b17e !important; }
+.checkpoint-directory-note { padding: 12px; margin-top: 12px; border: 1px solid #3a5143; border-radius: 8px; color: #adc7b8; font-size: 12px; line-height: 1.7; }
+.checkpoint-directory-note code { display: block; overflow-wrap: anywhere; font-size: 10px; margin-top: 6px; }
+@media (max-width: 640px) { .coverage-grid { grid-template-columns: 1fr; } .alias-row { grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr) 27px; gap: 4px; } }

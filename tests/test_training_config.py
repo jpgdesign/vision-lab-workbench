@@ -95,8 +95,8 @@ class TrainingConfigTests(unittest.TestCase):
         for params in [{"optimizer": "auto"}, {"loss": "focal"}, {"gradient_clip": 1}, {"checkpoint": "anything.pt"}]:
             with self.subTest(params=params), self.assertRaises(ValueError):
                 normalize_training_params("yolov12x", params)
-        with self.assertRaises(ValueError):
-            normalize_training_params("dinov3_7b", {})
+        self.assertEqual(training_capabilities("dinov3_7b")["dataset_formats"], ["imagefolder"])
+        self.assertEqual(normalize_training_params("dinov3_7b", {})["strategy"], "head_only")
 
     def test_yolo26_no_dfl_and_invalid_freeze_not_silent(self):
         self.assertNotIn("dfl", training_capabilities("yolo26x")["defaults"])

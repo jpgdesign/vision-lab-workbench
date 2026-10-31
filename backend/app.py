@@ -86,6 +86,9 @@ class JobInput(BaseModel):
     dataset_id: str | None = Field(default=None, max_length=100)
     checkpoint_job_id: str | None = Field(default=None, max_length=100)
     checkpoint_id: str | None = Field(default=None, max_length=100)
+    training_mode: Literal["standard", "expand_classes"] = "standard"
+    replay_dataset_id: str | None = Field(default=None, max_length=100)
+    class_aliases: dict[str, str] = Field(default_factory=dict, max_length=10000)
     params: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -472,14 +475,11 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
         finally:
             archive.unlink(missing_ok=True)
 
-    @application.post("/api/jobs", status_code=201)
-    def create_job(payload: JobInput):
+    def build_job_request(payload: JobInput):
         model = next((model for model in load_models() if model.get("id") == payload.model_id), None)
         if not model:
             raise HTTPException(404, "找不到模型。")
         has_checkpoint = bool(payload.checkpoint_id or payload.checkpoint_job_id)
-        if has_checkpoint and payload.kind != "inference":
-            raise HTTPException(422, "微調權重僅供推論比較使用。")
         if not model.get("available") and not (has_checkpoint and model.get("environment_available")):
             raise HTTPException(409, model.get("reason") or "本機模型尚未準備完成。")
         if not model.get(f"{payload.kind}_supported"):
@@ -491,6 +491,8 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
             raise HTTPException(422, str(exc)) from exc
         request: dict[str, Any] = {"kind": payload.kind, "model_id": payload.model_id, "params": params, **weight_fields}
         if payload.kind == "inference":
+            if payload.training_mode != "standard" or payload.replay_dataset_id or payload.class_aliases:
+                raise HTTPException(422, "推論不能指定訓練模式、舊資料集或類別別名。")
             if not payload.media_id or payload.dataset_id:
                 raise HTTPException(422, "推論需要 media_id，且不能同時指定 dataset_id。")
             item = media.get(payload.media_id)
@@ -500,8 +502,6 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
                 raise HTTPException(422, "這個模型不支援所選媒體類型。")
             request.update(media_id=payload.media_id, media_path=item["path"])
         else:
-            if payload.checkpoint_job_id:
-                raise HTTPException(422, "checkpoint_job_id 僅供推論比較微調結果使用。")
             if not payload.dataset_id or payload.media_id:
                 raise HTTPException(422, "訓練需要 dataset_id，且不能同時指定 media_id。")
             dataset = datasets.get(payload.dataset_id)
@@ -520,7 +520,40 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
             if allowed_root:
                 dataset["allowed_root"] = str(allowed_root)
             datasets.add(dataset)
-            request.update(dataset_id=payload.dataset_id, dataset=dataset)
+            request.update(dataset_id=payload.dataset_id, dataset=dataset, training_mode=payload.training_mode,
+                           class_aliases=payload.class_aliases)
+            if payload.replay_dataset_id:
+                replay = datasets.get(payload.replay_dataset_id)
+                if not replay:
+                    raise HTTPException(404, "請先驗證或上傳舊任務資料集。")
+                if replay["format"] not in supported:
+                    raise HTTPException(422, "舊任務資料集格式與此模型不相容。")
+                root = Path(replay["allowed_root"]) if replay.get("allowed_root") else None
+                checked = validate_dataset(replay["path"], replay["format"], replay["name"], root)
+                if not checked["valid"]:
+                    raise HTTPException(422, {"message": "舊資料集重新驗證失敗", "errors": checked["errors"]})
+                replay = {**checked["dataset"], "id": payload.replay_dataset_id}
+                if root:
+                    replay["allowed_root"] = str(root)
+                datasets.add(replay)
+                request.update(replay_dataset_id=payload.replay_dataset_id, replay_dataset=replay)
+        return request
+
+    @application.post("/api/training/preview")
+    def preview_training(payload: JobInput):
+        if payload.kind != "training":
+            raise HTTPException(422, "此端點只供訓練預檢。")
+        from .expansion import preview_expansion
+        return preview_expansion(build_job_request(payload))
+
+    @application.post("/api/jobs", status_code=201)
+    def create_job(payload: JobInput):
+        request = build_job_request(payload)
+        if payload.kind == "training":
+            from .expansion import preview_expansion
+            checked = preview_expansion(request)
+            if not checked["valid"]:
+                raise HTTPException(422, {"message": "訓練預檢未通過", "errors": checked["errors"], "plan": checked["plan"]})
         try:
             return manager.submit(request)
         except ValueError as exc:

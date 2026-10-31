@@ -45,6 +45,49 @@ def png():
     return stream.getvalue()
 
 
+def test_expansion_preview_and_enqueue_revalidate_coverage(api, tmp_path, monkeypatch):
+    from backend import expansion
+    from test_expansion import detection
+    client, app = api
+    monkeypatch.setattr(expansion, "source_classes", lambda _: (["person", "dog"], [0, 1]))
+    ids = []
+    for path, names, offset in (("old", ["person", "dog"], 0), ("new", ["bento"], 20)):
+        dataset = detection(tmp_path / path, names, offset)
+        response = client.post("/api/datasets/validate", json={"path": dataset["path"], "format": "yolo_detection"})
+        assert response.status_code == 200, response.text
+        ids.append(response.json()["dataset"]["id"])
+    payload = {"kind": "training", "model_id": "yolo26x", "dataset_id": ids[1], "replay_dataset_id": ids[0], "training_mode": "expand_classes"}
+    preview = client.post("/api/training/preview", json=payload)
+    assert preview.status_code == 200 and preview.json()["valid"], preview.text
+    assert preview.json()["plan"]["classes"] == ["person", "dog", "bento"]
+    assert not app.state.jobs.list()
+    # Previously valid preview grants no permission to bypass changed labels.
+    (tmp_path / "old/val/labels/1.txt").write_text("")
+    failed = client.post("/api/jobs", json=payload)
+    assert failed.status_code == 422 and "old_val" in failed.text
+    assert not app.state.jobs.list()
+    (tmp_path / "old/val/labels/1.txt").write_text("1 0.5 0.5 0.5 0.5\n")
+    queued = client.post("/api/jobs", json=payload)
+    assert queued.status_code == 201, queued.text
+    saved = json.loads((app.state.jobs.job_root / queued.json()["id"] / "request.json").read_text())
+    assert saved["replay_dataset"]["classes"] == ["person", "dog"]
+    assert saved["training_mode"] == "expand_classes"
+
+
+def test_training_can_start_from_completed_checkpoint(api, tmp_path):
+    from test_datasets import yolo
+    client, app = api
+    path = yolo(tmp_path / "dataset")
+    dataset = client.post("/api/datasets/validate", json={"path": str(path), "format": "yolo_detection"}).json()["dataset"]
+    source = app.state.jobs.submit({"kind": "training", "model_id": "yolo26x", "params": {}})
+    (app.state.jobs.job_root / source["id"] / "best.pt").write_bytes(b"test")
+    app.state.jobs.jobs[source["id"]]["status"] = "completed"
+    queued = client.post("/api/jobs", json={"kind": "training", "model_id": "yolo26x", "dataset_id": dataset["id"], "checkpoint_job_id": source["id"]})
+    assert queued.status_code == 201, queued.text
+    saved = json.loads((app.state.jobs.job_root / queued.json()["id"] / "request.json").read_text())
+    assert "checkpoint_path" in saved and "model_weight_path" not in saved
+
+
 def upload_image(client):
     result = client.post("/api/media", files={"file": ("input.png", png(), "image/png")})
     assert result.status_code == 201, result.text

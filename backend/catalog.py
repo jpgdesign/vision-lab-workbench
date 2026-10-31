@@ -46,7 +46,7 @@ def get_models():
         ("x3d_l", "X3D-L", "action", "pytorchvideo", "Kinetics-400 · 16 幀"),
         ("slowfast_r101_8x8", "SlowFast R101", "action", "pytorchvideo", "Kinetics-400 · 快慢雙路徑"),
         ("videomaev2_giant_k710", "VideoMAE V2 Giant", "action", "timm", "Kinetics-710 · FP16 · 16 幀"),
-        ("dinov3_7b", "DINOv3 ViT-7B", "embedding", "transformers", "視覺表徵模型；推論與微調接頭尚未提供"),
+        ("dinov3_7b", "DINOv3 ViT-7B", "embedding", "transformers", "原模型提取視覺表徵；ImageFolder 微調分類，可逐影格推論"),
     ]
     for model_id, name, task, dependency, description in definitions:
         license_accepted = is_model_license_accepted(model_id)
@@ -81,6 +81,8 @@ def get_models():
                        param("clip_seconds", "每段秒數", 4.0, minimum=0.5, maximum=16.0, step=0.5),
                        param("start_seconds", "開始時間（秒）", 0.0, minimum=0, maximum=86400, step=0.5),
                        param("top_k", "顯示前幾名", 5, minimum=1, maximum=20, step=1)]
+        elif model_id == "dinov3_7b":
+            params += [param("top_k", "分類 checkpoint 顯示前幾名", 5, minimum=1, maximum=20, step=1)] + deepcopy(VIDEO_PARAMS)
         training = training_capabilities(model_id)
         training = deepcopy(training or {})
         training.setdefault("supported_params", list(training.get("defaults", {})))
@@ -91,13 +93,10 @@ def get_models():
                 "grounding_dino_base": "工作台尚未接入 Grounding DINO 的文字與框標註配對、訓練驗證及微調權重回測流程；模型本身可以微調。",
                 "dinov3_7b": "工作台尚未建立 DINOv3 的微調流程。",
             }.get(model_id, "工作台尚未接入此模型的微調流程。")
-        if model_id == "dinov3_7b":
-            available = False
-            reason = "工作台尚未提供 DINOv3 推論與微調接頭；可登錄完整模型檔案，不會自動下載。"
         models.append({"id": model_id, "name": name, "task": task, "description": description,
                        "weight_path": str(path), "weight_bytes": path.stat().st_size if path.is_file() else 0,
                        "available": available, "environment_available": environment_available, "reason": reason,
-                       "inference_supported": task != "embedding", "training_supported": training_supported,
+                       "inference_supported": True, "training_supported": training_supported,
                        "capabilities": {"input_types": ["video"] if task == "action" else ["image", "video"],
                                         "inference_params": params, "training": training},
                        "license_accepted": license_accepted,
@@ -111,7 +110,7 @@ def validate_job_request(model_id, kind, params, *, allow_missing_weights=False)
     model = next((m for m in get_models() if m["id"] == model_id), None)
     if model is None:
         raise ValueError("未知模型")
-    if not model["available"] and not (allow_missing_weights and kind == "inference" and model.get("environment_available")):
+    if not model["available"] and not (allow_missing_weights and kind in {"inference", "training"} and model.get("environment_available")):
         raise ValueError(model["reason"])
     if kind == "training":
         if not model["training_supported"]:

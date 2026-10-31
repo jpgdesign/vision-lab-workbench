@@ -285,6 +285,7 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
     from .training import (EarlyStoppingTracker, _build_optimizer, _build_scheduler, _catalog_weight,
                            _resolve_device, _seed_worker, _validated_dataset, _write_json)
+    from .detection_expansion import DetectionRetention, expansion_spec, grounding_predictor
 
     p = normalize_training_params(request.get("params"))
     dataset = _validated_dataset(request, ("yolo_detection", "coco_detection"))
@@ -294,7 +295,13 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     classes = dataset["classes"]
-    weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
+    expansion = expansion_spec(request)
+    retention = DetectionRetention(request, output, p) if expansion else None
+    if request.get("checkpoint_path"):
+        from .model_registry import validate_checkpoint
+        weight = validate_checkpoint(request["model_id"], request["checkpoint_path"])
+    else:
+        weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
     source = weight if weight.is_dir() else weight.parent
     processor = AutoProcessor.from_pretrained(str(source), local_files_only=True)
     # Use the portable PyTorch attention operator; Windows does not need a CUDA compiler.
@@ -323,6 +330,9 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         for module in (model.model.backbone, model.model.text_backbone):
             module.requires_grad_(False)
     model.to(device)
+    if retention:
+        emit({"event": "log", "message": "Grounding DINO 以完整 union 提示詞建立原類別驗證基準；此評估不代表全部開放詞彙。"})
+        retention.baseline(grounding_predictor(model, processor, caption, retention.settings, device))
     trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
     audit_name, audit_parameter = next((name, parameter) for name, parameter in model.named_parameters()
                                       if parameter.requires_grad and "bbox_embed" in name and name.endswith("weight"))
@@ -347,10 +357,12 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                  "crowd_annotations": "excluded", "loss": "native HF Hungarian matcher + token focal + L1 + GIoU",
                  "encoder_supervision": "differentiable top-k encoder proposal logits and boxes",
                  "cardinality_error": "unweighted native diagnostic; not part of the optimization objective; not an open-vocabulary detection count metric",
-                 "class_loss_coefficient": 2.0, "checkpoint_format": "huggingface_safetensors"}
+                 "class_loss_coefficient": 2.0, "checkpoint_format": "huggingface_safetensors",
+                 **({"class_expansion": expansion, "head_expansion": "open_vocabulary_caption_only"} if expansion else {})}
     _write_json(output / "training_config.json", {"model_id": request["model_id"], "params": p,
                 "dataset_id": dataset.get("id"), "dataset_classes": classes, "schema_version": 1,
-                "caption": caption, "text_tokens": text_tokens, **text_limits})
+                "caption": caption, "text_tokens": text_tokens, **text_limits,
+                **({"class_expansion": expansion} if expansion else {})})
     _write_json(output / "effective_training.json", effective)
     emit({"event": "log", "message": f"Grounding DINO：{len(classes)} 類、{text_tokens} tokens；"
           f"{effective['trainable_parameters']:,} 個可訓練參數，{device}，AMP={amp}。"})
@@ -369,7 +381,9 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         _write_json(destination / "workbench_training.json", {"model_id": request["model_id"], "epoch": epoch,
                     "classes": classes, "caption": caption, "text_tokens": text_tokens, **text_limits,
                     "params": p, "dataset_id": dataset.get("id"),
-                    "inference_input": "image_or_video", "label_format": "zero_based_caption_phrase_index"})
+                    "inference_input": "image_or_video", "label_format": "zero_based_caption_phrase_index",
+                    **({"training_mode": "expand_classes", "base_classes": expansion["base_classes"],
+                        "class_expansion": expansion, "head_expansion": "open_vocabulary_caption_only"} if expansion else {})})
 
     for epoch in range(1, p["epochs"] + 1):
         started = time.monotonic()
@@ -444,6 +458,12 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                        "max_abs_delta": float((audit_parameter.detach().float().cpu() - audit_initial).abs().max())}
     effective["parameter_update"] = update_evidence
     _write_json(output / "effective_training.json", effective)
+    retention_result = None
+    if retention:
+        from safetensors.torch import load_model
+        # Evaluate the chosen best checkpoint, not the final optimizer state.
+        load_model(model, str(output / "best" / "model.safetensors"), strict=True, device="cpu")
+        retention_result = retention.finish(grounding_predictor(model, processor, caption, retention.settings, device))
     emit({"event": "progress", "progress": 0.95, "message": "微調完成，正在封裝最佳權重 best.zip"})
     best_archive = _archive_checkpoint(output / "best")
     emit({"event": "progress", "progress": 0.98, "message": "正在封裝最後權重 last.zip"})
@@ -452,9 +472,11 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     return {"checkpoint_path": str(best_archive), "artifacts": {"best": str(best_archive), "last": str(last_archive),
             "metrics": str(csv_path), "metrics_json": str(output / "metrics.json"),
             "loss_components": str(output / "loss_components.json"),
-            "config": str(output / "training_config.json"), "effective_config": str(output / "effective_training.json")},
+            "config": str(output / "training_config.json"), "effective_config": str(output / "effective_training.json"),
+            **({"retention": str(output / "retention.json"), "retention_before": str(output / "retention_before.json")} if expansion else {})},
             "summary": f"完成 {len(metrics)} 輪 Grounding DINO 監督微調；最佳 epoch {stopper.best_epoch}，val loss {stopper.best_value:.5f}。",
             "training": {"model_id": request["model_id"], "checkpoint_format": "huggingface_safetensors",
                          "checkpoint_directory": str(output / "best"), "classes": classes, "caption": caption,
                          "best_epoch": stopper.best_epoch, "early_stopping": stopper.summary(),
-                         "parameter_update": update_evidence}}
+                         "parameter_update": update_evidence,
+                         **({"class_expansion": expansion, "retention": retention_result} if expansion else {})}}

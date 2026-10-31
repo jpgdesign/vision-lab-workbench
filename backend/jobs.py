@@ -118,7 +118,7 @@ class JobManager:
             request["id"] = job_id
             write_json_atomic(directory / "request.json", request)
             job = {"id": job_id, "kind": request["kind"], "model_id": request["model_id"], "status": "queued", "progress": 0.0, "message": "等待 GPU 執行", "created_at": now_iso(), "params": request.get("params", {}), "logs": [], "metrics": [], "_artifacts": []}
-            for field in ("media_id", "dataset_id", "checkpoint_job_id", "checkpoint_id"):
+            for field in ("media_id", "dataset_id", "checkpoint_job_id", "checkpoint_id", "training_mode", "replay_dataset_id", "class_aliases"):
                 if field in request:
                     job[field] = request[field]
             if request["kind"] == "live":
@@ -475,14 +475,40 @@ class JobManager:
         public = copy.deepcopy(result)
         if "artifact_urls" in public:
             raise ValueError("工作應回傳 artifacts 路徑，由服務建立公開 URL。")
+        def checkpoint_directory(value):
+            if (not isinstance(value, str) or public.get("training", {}).get("model_id") != "dinov3_7b"
+                    or public.get("training", {}).get("checkpoint_format") != "dinov3_classifier_safetensors"):
+                raise ValueError("只有完整 DINOv3 分類 checkpoint 可回傳模型資料夾。")
+            path = Path(value)
+            path = path if path.is_absolute() else directory / path
+            if (path.is_symlink() or not path.is_dir() or not path.resolve().is_relative_to(directory)
+                    or path.resolve().parent != directory or path.name not in {"best", "last"}):
+                raise ValueError("checkpoint 資料夾超出工作範圍。")
+            from .model_registry import validate_checkpoint
+            validate_checkpoint("dinov3_7b", str(path.resolve()))
+            return path.name
         for source, destination in (("media_path", "media_url"), ("checkpoint_path", "checkpoint_url")):
             if source in public:
-                public[destination] = url(public.pop(source))
+                value = public.pop(source)
+                candidate = Path(value) if isinstance(value, str) else None
+                candidate = (candidate if candidate.is_absolute() else directory / candidate) if candidate is not None else None
+                if source == "checkpoint_path" and candidate is not None and candidate.is_dir():
+                    public["checkpoint_directory_name"] = checkpoint_directory(value)
+                    public["checkpoint_is_directory"] = True
+                else:
+                    public[destination] = url(value)
         artifacts = public.pop("artifacts", {})
         if artifacts:
             if not isinstance(artifacts, dict):
                 raise ValueError("artifacts 必須是名稱與路徑對照表。")
-            public["artifact_urls"] = {str(key): url(value) for key, value in artifacts.items()}
+            public["artifact_urls"] = {}
+            for key, value in artifacts.items():
+                candidate = Path(value) if isinstance(value, str) else None
+                candidate = (candidate if candidate.is_absolute() else directory / candidate) if candidate is not None else None
+                if candidate is not None and candidate.is_dir():
+                    public.setdefault("artifact_directories", {})[str(key)] = checkpoint_directory(value)
+                else:
+                    public["artifact_urls"][str(key)] = url(value)
         # Worker must emit paths; accepting arbitrary remote URLs bypasses the
         # trusted artifact route and could make a result leak local data.
         for key in ("media_url", "checkpoint_url"):
@@ -512,6 +538,12 @@ class JobManager:
             if job.get("model_id") != model_id:
                 raise ValueError("訓練權重與所選模型不相容。")
         directory = (self.job_root / job_id).resolve()
+        if model_id == "dinov3_7b":
+            checkpoint = directory / "best"
+            if checkpoint.is_symlink() or not checkpoint.is_dir() or not checkpoint.resolve().is_relative_to(directory):
+                raise ValueError("找不到此訓練工作的 DINOv3 分類模型資料夾。")
+            from .model_registry import validate_checkpoint
+            return validate_checkpoint(model_id, str(checkpoint.resolve()))
         if model_id in {"yolov12x", "yolo26x"}:
             checkpoint = directory / "best.pt"
             if checkpoint.is_symlink() or not checkpoint.is_file() or not checkpoint.resolve().is_relative_to(directory):

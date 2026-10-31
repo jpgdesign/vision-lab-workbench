@@ -5,3 +5,4 @@
 @media (max-width: 1100px) {
   .canvas-toolbar { flex-wrap: wrap; height: auto; min-height: 57px; padding-top: 10px; padding-bottom: 10px; gap: 8px; }
 }
+.inference-artifacts { padding: 0 16px 8px; margin: 0; flex-shrink: 0; max-height: 60px; overflow: auto; }

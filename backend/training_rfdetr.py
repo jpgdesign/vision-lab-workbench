@@ -176,12 +176,28 @@ def _prepare_coco(dataset: dict, output: Path, emit) -> Path:
     return target
 
 
+def _checkpoint_model_options(metadata: dict, params: dict) -> dict:
+    """Reconstruct a saved head exactly, retaining its learned position table.
+
+Resolution is an explicit evaluation/training choice, shared before and after.
+Additional query groups would be randomly initialized and cannot be claimed as
+preserved source groups, so require a supported subset of the saved groups.
+"""
+    if params["group_detr"] > metadata["group_detr"]:
+        raise ValueError(f"來源 RF-DETR checkpoint 只有 {metadata['group_detr']} 個查詢群組；group_detr 不可增加。")
+    # build_model adds one unused category-0 row. Saved workbench heads contain
+    # exactly len(classes)+1 rows; avoid a constructor resize before loading.
+    return {"num_classes": len(metadata["classes"]),
+            "positional_encoding_size": metadata["positional_encoding_size"]}
+
+
 def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     from .training import EarlyStoppingTracker, _catalog_weight, _resolve_device, _validated_dataset, _write_json
     import torch
     from rfdetr_plus import RFDETR2XLarge
     from rfdetr.datasets import build_dataset as native_build_dataset
     from rfdetr.datasets.coco import make_coco_transforms_square_div_64
+    from .detection_expansion import DetectionRetention, expansion_spec, expand_rfdetr_rows, rfdetr_predictor
 
     p = normalize_training_params(request.get("params"))
     dataset = _validated_dataset(request, ("yolo_detection", "coco_detection"))
@@ -189,13 +205,24 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
     output.mkdir(parents=True, exist_ok=True)
     os.environ.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", MPLBACKEND="Agg")
     classes = dataset["classes"]
+    expansion = expansion_spec(request)
+    retention = DetectionRetention(request, output, p) if expansion else None
     device = _resolve_device(p["device"])
     if device.type == "cuda":
         torch.cuda.set_device(device)
     torch.manual_seed(p["seed"])
-    checkpoint = _catalog_weight(MODEL_ID, request.get("model_weight_path"))
+    source_metadata, source_options = None, {}
+    if request.get("checkpoint_path"):
+        from .model_registry import validate_checkpoint
+        source_folder = validate_checkpoint(MODEL_ID, request["checkpoint_path"])
+        source_metadata = json.loads((source_folder / "workbench_training.json").read_text(encoding="utf-8"))
+        source_options = _checkpoint_model_options(source_metadata, p)
+        checkpoint = source_folder / "model.pth"
+    else:
+        checkpoint = _catalog_weight(MODEL_ID, request.get("model_weight_path"))
     _write_json(output / "training_config.json", {"model_id": MODEL_ID, "params": p,
-                "dataset_id": dataset.get("id"), "dataset_classes": classes, "checkpoint_source": "local_catalog", "schema_version": 1})
+                "dataset_id": dataset.get("id"), "dataset_classes": classes, "checkpoint_source": "local_catalog", "schema_version": 1,
+                **({"class_expansion": expansion} if expansion else {})})
     converted = _prepare_coco(dataset, output, emit)
     emit({"event": "progress", "progress": 0.03, "message": "載入本機 RF-DETR 2XL 權重"})
 
@@ -211,7 +238,24 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         model = LocalRFDETR2XLarge(pretrain_weights=str(checkpoint), device=device.type,
                   accept_platform_model_license=p["accept_platform_license"], resolution=p["imgsz"],
                   group_detr=p["group_detr"], amp=bool(p["amp"] and device.type == "cuda"),
-                  gradient_checkpointing=p["gradient_checkpointing"])
+                  gradient_checkpointing=p["gradient_checkpointing"], **source_options)
+    if source_metadata:
+        if model.model.model.class_embed.weight.shape[0] != len(source_metadata["classes"]) + 1:
+            raise ValueError("RF-DETR 來源 checkpoint 的分類頭行數與類別 metadata 不符。")
+        if [model.class_names.get(i + 1) for i in range(len(source_metadata["classes"]))] != source_metadata["classes"]:
+            raise ValueError("RF-DETR 來源 checkpoint 的內嵌類別與 metadata 不符。")
+    expansion_audit = None
+    if retention:
+        if [model.class_names.get(i) for i in expansion["base_class_ids"]] != expansion["base_classes"]:
+            raise ValueError("RF-DETR 來源 category ID 的語意與類別擴充映射不符。")
+        emit({"event": "log", "message": "以 RF-DETR 原始 category ID 評估原類別驗證基準。"})
+        retention.baseline(rfdetr_predictor(model, retention.settings, expansion["base_class_ids"]))
+        expansion_audit = expand_rfdetr_rows(model.model.model, expansion)
+        # Native train_from_config otherwise repeats/crops output rows. Our
+        # semantic mapping is complete, so prevent that second head rewrite.
+        model.model_config.num_classes = len(classes) + 1
+        model.model.class_names = list(classes)
+        _write_json(output / "expansion_transfer.json", expansion_audit)
     frozen_count = 0
     if p["strategy"] == "freeze_backbone":
         for parameter in model.model.model.backbone.parameters():
@@ -239,9 +283,12 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
         temp.replace(folder / "model.pth")
         _write_json(folder / "workbench_training.json", {"schema_version": 1, "model_id": MODEL_ID,
                     "classes": classes, "class_id_offset": 1, "num_classes": len(classes) + 1,
-                    "resolution": p["imgsz"], "group_detr": p["group_detr"], "positional_encoding_size": 44,
+                    "resolution": p["imgsz"], "group_detr": p["group_detr"],
+                    "positional_encoding_size": model.model_config.positional_encoding_size,
                     "epoch": epoch, "val_map50_95": score, "strategy": p["strategy"],
-                    "early_stopping": stopper.summary(), "format": "rfdetr_pth"})
+                    "early_stopping": stopper.summary(), "format": "rfdetr_pth",
+                    **({"training_mode": "expand_classes", "base_classes": expansion["base_classes"],
+                        "class_expansion": expansion, "expansion_transfer": expansion_audit} if expansion else {})})
 
     def epoch_end(stats):
         epoch = int(stats["epoch"]) + 1
@@ -303,14 +350,23 @@ def run_training(request: dict, output_dir: str | Path, emit) -> dict:
                  "native_training_arguments": kwargs, "early_stopping": stopper.summary(), "requested_params": p,
                  "weight_update": update_evidence}
     _write_json(output / "effective_training.json", effective)
+    retention_result = None
+    if retention:
+        best_state = torch.load(best, map_location="cpu", weights_only=False)["model"]
+        model.model.model.load_state_dict(best_state, strict=True)
+        del best_state
+        retention_result = retention.finish(rfdetr_predictor(model, retention.settings))
     emit({"event": "progress", "progress": 1.0, "message": "RF-DETR 訓練與驗證完成，已保存最佳與最後權重"})
     return {"checkpoint_path": str(best),
             "artifacts": {"best": str(best), "last": str(last), "metrics": str(output / "metrics.csv"),
                           "metrics_json": str(output / "metrics.json"), "config": str(output / "training_config.json"),
                           "effective_config": str(output / "effective_training.json"),
                           "dataset_conversion": str(output / "dataset_conversion.json"),
-                          "checkpoint_metadata": str(output / "best" / "workbench_training.json")},
+                          "checkpoint_metadata": str(output / "best" / "workbench_training.json"),
+                          **({"retention": str(output / "retention.json"), "retention_before": str(output / "retention_before.json"),
+                              "expansion_transfer": str(output / "expansion_transfer.json")} if expansion else {})},
             "summary": f"完成 {len(metrics)} 輪 RF-DETR 2XL 監督微調；最佳 epoch {stopper.best_epoch}。",
             "training": {"model_id": MODEL_ID, "checkpoint_format": "rfdetr_pth", "checkpoint_directory": str(best.parent),
                          "classes": classes, "class_id_offset": 1, "best_epoch": stopper.best_epoch,
-                         "early_stopping": stopper.summary(), "weight_update": update_evidence}}
+                         "early_stopping": stopper.summary(), "weight_update": update_evidence,
+                         **({"class_expansion": expansion, "retention": retention_result} if expansion else {})}}

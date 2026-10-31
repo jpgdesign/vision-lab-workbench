@@ -103,9 +103,10 @@ def training_capabilities(model_id: str) -> dict:
     """Single source of truth for supported UI controls and worker validation."""
     adapter = _detector_training_adapter(model_id)
     if adapter is not None:
-        return adapter.training_capabilities()
+        return {**adapter.training_capabilities(), "training_modes": ["standard", "expand_classes"]}
     yolo = model_id in YOLO_IDS
-    if not yolo and model_id not in VIVIT_IDS | ACTION_IDS:
+    dino = model_id == "dinov3_7b"
+    if not yolo and not dino and model_id not in VIVIT_IDS | ACTION_IDS:
         return {"dataset_formats": [], "optimizers": [], "losses": [], "schedulers": [],
                 "strategies": [], "defaults": {}, "parameters": []}
     optimizers = (["SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp", "MuSGD"] if yolo
@@ -151,7 +152,8 @@ def training_capabilities(model_id: str) -> dict:
             _parameter("step_gamma", "Step 排程衰減比例", 0.1, min=0.0001, max=1, step=0.01),
             _parameter("min_lr", "Cosine 最低學習率", 0.000001, min=0, max=1, step=0.000001),
         ]
-    return {"dataset_formats": ["yolo_detection", "coco_detection"] if yolo else ["video_csv"],
+    return {"dataset_formats": ["yolo_detection", "coco_detection"] if yolo else ["imagefolder"] if dino else ["video_csv"],
+            "training_modes": ["standard", "expand_classes"],
             "optimizers": optimizers, "losses": losses, "schedulers": schedulers,
             "strategies": strategies, "defaults": {p["key"]: p["default"] for p in params},
             "parameters": params,
@@ -345,10 +347,14 @@ def run_training(request: dict, output_dir: str | Path, emit: Emit) -> dict:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     os.environ["YOLO_OFFLINE"] = "true"
+    from .expansion import prepare_expansion
+    request = prepare_expansion(request, output, emit)
     _write_json(output / "training_config.json", {"model_id": model_id, "params": params,
                 "dataset_id": request.get("dataset", {}).get("id"),
                 "dataset_classes": request.get("dataset", {}).get("classes"),
-                "checkpoint_source": "local_catalog", "schema_version": 1})
+                "checkpoint_source": request.get("checkpoint_path") or request.get("model_weight_path") or "local_catalog",
+                "training_mode": request.get("training_mode", "standard"),
+                "class_expansion": request.get("class_expansion"), "schema_version": 2})
     emit({"event": "progress", "progress": 0.01, "message": "載入本機預訓練權重與監督資料集"})
     try:
         adapter = _detector_training_adapter(model_id)
@@ -358,6 +364,9 @@ def run_training(request: dict, output_dir: str | Path, emit: Emit) -> dict:
             return _train_yolo(request, params, output, emit)
         if model_id in VIVIT_IDS | ACTION_IDS:
             return _train_classifier(request, params, output, emit)
+        if model_id == "dinov3_7b":
+            from .training_dinov3 import run_training as train_dino
+            return train_dino({**request, "params": params}, output, emit)
         raise ValueError(f"尚未實作模型 {model_id} 的訓練介面。")
     except RuntimeError as exc:
         if "out of memory" in str(exc).lower():
@@ -379,12 +388,20 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     import yaml
     from ultralytics import YOLO
     from ultralytics.models.yolo.detect import DetectionTrainer
+    from .detection_expansion import DetectionRetention, expansion_spec, transplant_yolo_rows, yolo_predictor
 
     dataset = _validated_dataset(request, ("yolo_detection", "coco_detection"))
     if dataset["format"] == "coco_detection":
         dataset = _coco_to_yolo(dataset, output, emit)
-    weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
+    if request.get("checkpoint_path"):
+        from .model_registry import validate_checkpoint
+        weight = validate_checkpoint(request["model_id"], request["checkpoint_path"])
+    else:
+        weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
     device = _resolve_device(p["device"])
+    expansion = expansion_spec(request)
+    retention = DetectionRetention(request, output, p) if expansion else None
+    expansion_audit = {}
     details = dataset["details"]
     # Rebuild only the validated fields. Ultralytics dataset YAML supports a
     # download directive that must never execute from a user-uploaded dataset.
@@ -407,6 +424,15 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
         def get_dataset(self):
             return dict(safe_data)
 
+        def get_model(self, cfg=None, weights=None, verbose=True):
+            built = super().get_model(cfg=cfg, weights=weights, verbose=verbose)
+            if expansion:
+                if weights is None:
+                    raise ValueError("YOLO 類別擴充必須從具有原分類輸出的來源權重開始。")
+                expansion_audit.update(transplant_yolo_rows(weights, built, expansion))
+                _write_json(output / "expansion_transfer.json", expansion_audit)
+            return built
+
         def final_eval(self):
             # Ultralytics emits on_fit_epoch_end again for the final best-weight
             # evaluation. It is not an additional training epoch.
@@ -419,6 +445,17 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     model = YOLO(str(weight), task="detect")
     from .inference import validate_yolo_architecture
     validate_yolo_architecture(model, request["model_id"])
+    if retention:
+        emit({"event": "log", "message": "使用來源權重評估原類別驗證集，建立保留能力基準。"})
+        retention.baseline(yolo_predictor(model, retention.settings, device, expansion["base_class_ids"]))
+        # YOLO inference can fuse convolutions in-place. Reload the untouched
+        # source before native shape transfer and semantic class-row copying.
+        del model
+        import gc
+        gc.collect()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        model = YOLO(str(weight), task="detect")
     freeze = 0
     if p["strategy"] == "freeze_backbone":
         freeze = p["freeze"] or len(model.model.yaml.get("backbone", []))
@@ -516,18 +553,36 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     shutil.copy2(best, final_best)
     shutil.copy2(last, final_last)
     _write_json(output / "workbench_training.json", {"schema_version": 1, "model_id": request["model_id"],
-                "classes": dataset["classes"], "checkpoint_format": "ultralytics"})
+                "classes": dataset["classes"], "checkpoint_format": "ultralytics",
+                **({"training_mode": "expand_classes", "base_classes": expansion["base_classes"],
+                    "class_expansion": expansion, "expansion_transfer": expansion_audit} if expansion else {})})
     write_effective_config(trainer)
-    emit({"event": "progress", "progress": 1.0, "message": "訓練與驗證完成，已保存最佳與最後權重"})
+    stopping_summary = trainer.stopper.summary()
     artifacts = {"best": str(final_best), "last": str(final_last), "checkpoint_metadata": str(output / "workbench_training.json"),
             "metrics": str(csv_path), "metrics_json": str(output / "metrics.json"),
             "config": str(output / "training_config.json"), "effective_config": str(output / "effective_training.json")}
     if (output / "coco_conversion.json").is_file():
         artifacts["coco_conversion"] = str(output / "coco_conversion.json")
+    retention_result = None
+    if retention:
+        # model.train() has loaded best.pt into model.model. Release optimizer
+        # and EMA tensors before evaluating it on the same held-out images.
+        model.trainer = None
+        del trainer
+        import gc
+        gc.collect()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
+        emit({"event": "log", "message": "評估最佳擴充權重的原類別與新類別，使用與基準相同的推論條件。"})
+        retention_result = retention.finish(yolo_predictor(model, retention.settings, device))
+        artifacts.update(retention=str(output / "retention.json"), retention_before=str(output / "retention_before.json"),
+                         expansion_transfer=str(output / "expansion_transfer.json"))
+    emit({"event": "progress", "progress": 1.0, "message": "訓練與驗證完成，已保存最佳與最後權重"})
     return {"checkpoint_path": str(final_best), "artifacts": artifacts,
             "summary": f"完成 {len(metrics)} 輪 YOLO 監督微調；最佳權重 best.pt，最後權重 last.pt。",
             "training": {"model_id": request["model_id"], "checkpoint_format": "ultralytics", "classes": dataset["classes"],
-                         "early_stopping": trainer.stopper.summary()}}
+                         "early_stopping": stopping_summary,
+                         **({"class_expansion": expansion, "retention": retention_result} if expansion else {})}}
 
 
 def sample_frame_indices(total: int, count: int, training: bool = False, rng=None) -> list[int]:
@@ -678,58 +733,170 @@ def _check_video_samples(dataset):
     return splits
 
 
-def _load_vivit(weight, classes):
+def _expanded_linear_classifier(classifier, base_classes, classes):
+    """Preserve each original semantic row while initializing only added rows."""
+    import torch
+    if not isinstance(classifier, torch.nn.Linear):
+        raise ValueError("類別擴充需要 Linear 分類頭。")
+    if (not base_classes or len(base_classes) != classifier.out_features
+            or len(set(base_classes)) != len(base_classes) or len(set(classes)) != len(classes)
+            or not set(base_classes).issubset(classes)):
+        raise ValueError("原分類頭與擴充類別不相容；必須保留所有原類別及其名稱。")
+    expanded = torch.nn.Linear(classifier.in_features, len(classes), bias=classifier.bias is not None,
+                               device=classifier.weight.device, dtype=classifier.weight.dtype)
+    with torch.no_grad():
+        for old_index, name in enumerate(base_classes):
+            new_index = classes.index(name)
+            expanded.weight[new_index].copy_(classifier.weight[old_index])
+            if classifier.bias is not None:
+                expanded.bias[new_index].copy_(classifier.bias[old_index])
+    return expanded
+
+
+def _action_class_names(labels):
+    if isinstance(labels, dict):
+        keys = sorted((int(key), name) for key, name in labels.items())
+        if [key for key, _ in keys] != list(range(len(keys))):
+            raise ValueError("來源模型的類別索引不連續。")
+        return [name for _, name in keys]
+    return list(labels)
+
+
+def _action_replacement_head(classifier, classes, source_classes, base_classes=None):
+    import torch
+    if base_classes is not None:
+        if list(source_classes) != list(base_classes):
+            raise ValueError("來源 checkpoint 的原類別名稱／順序與 class_expansion.base_classes 不符。")
+        return _expanded_linear_classifier(classifier, base_classes, classes)
+    if not isinstance(classifier, torch.nn.Linear):
+        raise ValueError("模型分類頭不是預期的 Linear 結構。")
+    if list(source_classes) == list(classes):
+        # Continuing the same semantic task must retain its learned head.
+        return classifier
+    return torch.nn.Linear(classifier.in_features, len(classes), bias=classifier.bias is not None,
+                           device=classifier.weight.device, dtype=classifier.weight.dtype)
+
+
+def _load_vivit(weight, classes, base_classes=None):
     import torch
     from transformers import VivitConfig, VivitForVideoClassification, VivitImageProcessor
     model_dir = weight if weight.is_dir() else weight.parent
     config = VivitConfig.from_pretrained(str(model_dir), local_files_only=True)
     num_frames = int(getattr(config, "num_frames", 32))
     processor = VivitImageProcessor.from_pretrained(str(model_dir), local_files_only=True)
-    config.num_labels = len(classes)
-    config.id2label = dict(enumerate(classes))
-    config.label2id = {label: index for index, label in enumerate(classes)}
     model, loading = VivitForVideoClassification.from_pretrained(
         str(model_dir), config=config, local_files_only=True,
-        ignore_mismatched_sizes=True, output_loading_info=True, weights_only=True)
-    # Only the classification head may change shape. A partially missing trunk
-    # must not quietly become a random-init training run.
+        output_loading_info=True, weights_only=True)
+    # Load the complete source before replacing the head. In expansion mode a
+    # randomly initialized or discarded source head would lose old knowledge.
     missing = list(loading.get("missing_keys", []))
     mismatched = loading.get("mismatched_keys", [])
-    bad = [key for key in missing if not key.startswith("classifier.")]
+    bad = list(missing)
     for item in mismatched:
         key = item[0] if isinstance(item, (tuple, list)) else item
-        if not str(key).startswith("classifier."):
-            bad.append(str(key))
+        bad.append(str(key))
     if bad or loading.get("error_msgs"):
         raise RuntimeError(f"預訓練主幹權重不相容：{bad or loading['error_msgs']}")
-    # Even equal class counts do not imply identical label semantics.
-    model.classifier.reset_parameters()
-    return model, model.classifier, processor, {"num_frames": num_frames}
+    source_classes = _action_class_names(config.id2label)
+    if len(source_classes) == 400 and all(name == f"LABEL_{i}" for i, name in enumerate(source_classes)):
+        from .inference import kinetics400_labels
+        source_classes = _action_class_names(kinetics400_labels())
+    model.classifier = _action_replacement_head(model.classifier, classes, source_classes, base_classes)
+    model.config.num_labels = len(classes)
+    model.config.id2label = dict(enumerate(classes))
+    model.config.label2id = {label: index for index, label in enumerate(classes)}
+    return model, model.classifier, processor, {"num_frames": num_frames, "source_classes": source_classes}
 
 
-def _load_action_classifier(model_id, classes, model_weight_path=None):
+def _load_action_classifier(model_id, classes, model_weight_path=None, *, checkpoint_path=None, base_classes=None):
     import torch
     from .inference import create_action_model
-    model, metadata = create_action_model(model_id, device="cpu", model_weight_path=model_weight_path)
+    model, metadata = create_action_model(model_id, device="cpu", checkpoint_path=checkpoint_path,
+                                          model_weight_path=model_weight_path if not checkpoint_path else None)
     model.float()
+    source_classes = _action_class_names(metadata["labels"])
     if model_id in {"x3d_l", "slowfast_r101_8x8"}:
         head = model.blocks[-1]
         if not isinstance(head.proj, torch.nn.Linear):
             raise RuntimeError("模型分類頭不是預期的 Linear 結構。")
-        head.proj = torch.nn.Linear(head.proj.in_features, len(classes))
+        head.proj = _action_replacement_head(head.proj, classes, source_classes, base_classes)
         head.activation = torch.nn.Identity()
         classifier = head.proj
     elif model_id == "videomaev2_giant_k710":
         if not isinstance(model.head, torch.nn.Linear):
             raise RuntimeError("VideoMAE 分類頭不是預期的 Linear 結構。")
-        model.head = torch.nn.Linear(model.head.in_features, len(classes))
+        model.head = _action_replacement_head(model.head, classes, source_classes, base_classes)
         classifier = model.head
     else:
         raise ValueError(f"不支援的行為分類器：{model_id}")
     metadata = dict(metadata)
     metadata["labels"] = list(classes)
+    metadata["source_classes"] = source_classes
     metadata["outputs_probabilities"] = False
     return model, classifier, metadata
+
+
+def _action_evaluation_samples(dataset, classes):
+    """Validate only the held-out split; retention must not evaluate train clips."""
+    if (not isinstance(dataset, dict) or dataset.get("format") != "video_csv"
+            or dataset.get("classes") != classes):
+        raise ValueError("保留效果評估需要使用完整 union 類別索引的 video_csv 資料集。")
+    details = dataset.get("details", {})
+    root = Path(details.get("root", "")).resolve()
+    samples = details.get("val_samples")
+    if not isinstance(samples, list) or not samples:
+        raise ValueError("保留效果評估缺少驗證影片。")
+    checked = []
+    for sample in samples:
+        path = Path(sample["path"]).resolve()
+        label = sample.get("label")
+        if (not path.is_relative_to(root) or not path.is_file() or isinstance(label, bool)
+                or not isinstance(label, int) or not 0 <= label < len(classes)):
+            raise ValueError("保留效果評估的影片路徑或類別索引無效。")
+        checked.append({"path": str(path), "label": label})
+    return checked
+
+
+def _evaluate_action_classifier(model, loader, p, device, is_vivit, classes, class_ids=None):
+    """Use the same deterministic preprocessing and precision before and after."""
+    import torch
+    model.eval()
+    seen = correct = 0
+    total_loss = 0.0
+    per_class = {name: {"samples": 0, "correct": 0} for name in classes}
+    allowed = None if class_ids is None else torch.tensor(class_ids, device=device, dtype=torch.long)
+    amp = bool(p["amp"] and device.type == "cuda")
+    with torch.inference_mode():
+        for pixels, labels in loader:
+            pixels, labels = _to_device(pixels, device), labels.to(device, non_blocking=True)
+            with torch.autocast(device_type=device.type, dtype=torch.float16 if amp else torch.bfloat16, enabled=amp):
+                logits = model(pixel_values=pixels).logits if is_vivit else model(pixels)
+                if allowed is not None:
+                    matches = labels[:, None] == allowed[None, :]
+                    if not matches.any(1).all():
+                        raise ValueError("原類別驗證集包含新增類別，無法評估原模型。")
+                    targets = matches.long().argmax(1)
+                    scored_logits = logits.index_select(1, allowed)
+                else:
+                    targets, scored_logits = labels, logits
+                loss = _classification_loss(scored_logits, targets, p)
+            if not torch.isfinite(logits).all() or not torch.isfinite(loss):
+                raise RuntimeError("保留效果評估出現 NaN / Inf。")
+            predictions = scored_logits.argmax(-1)
+            if allowed is not None:
+                predictions = allowed[predictions]
+            seen += labels.numel()
+            correct += int((predictions == labels).sum())
+            total_loss += float(loss) * labels.numel()
+            for label, prediction in zip(labels.tolist(), predictions.tolist()):
+                per_class[classes[label]]["samples"] += 1
+                per_class[classes[label]]["correct"] += int(label == prediction)
+    if not seen:
+        raise ValueError("保留效果評估沒有影片樣本。")
+    return {"accuracy": correct / seen, "loss": total_loss / seen, "sample_count": seen,
+            "class_count": sum(counts["samples"] > 0 for counts in per_class.values()),
+            "class_accuracy": {name: {**counts, "accuracy": counts["correct"] / counts["samples"]}
+                               for name, counts in per_class.items() if counts["samples"]}}
 
 
 def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
@@ -739,7 +906,12 @@ def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
 
     dataset = _validated_dataset(request, "video_csv")
     train_samples, val_samples = _check_video_samples(dataset)
-    weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
+    checkpoint = request.get("checkpoint_path")
+    if checkpoint:
+        from .model_registry import validate_checkpoint
+        weight = validate_checkpoint(request["model_id"], checkpoint)
+    else:
+        weight = _catalog_weight(request["model_id"], request.get("model_weight_path"))
     device = _resolve_device(p["device"])
     random.seed(p["seed"])
     np.random.seed(p["seed"])
@@ -749,12 +921,26 @@ def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     classes = dataset["classes"]
+    expanding = request.get("training_mode", "standard") == "expand_classes"
+    expansion = request.get("class_expansion", {}) if expanding else {}
+    base_classes = expansion.get("base_classes") if expanding else None
+    if expanding:
+        if (not isinstance(base_classes, list) or not base_classes or expansion.get("classes") != classes
+                or any(name not in classes for name in base_classes)):
+            raise ValueError("類別擴充缺少與 union 資料集相符的原類別設定。")
+        old_class_ids = [classes.index(name) for name in base_classes]
+        new_class_ids = [index for index, name in enumerate(classes) if name not in base_classes]
+        if (expansion.get("old_class_ids") != old_class_ids
+                or expansion.get("new_class_ids") != new_class_ids or not new_class_ids):
+            raise ValueError("類別擴充的原／新類別索引與名稱不一致。")
     is_vivit = request["model_id"] in VIVIT_IDS
     if is_vivit:
-        model, classifier, processor, metadata = _load_vivit(weight, classes)
+        model, classifier, processor, metadata = _load_vivit(weight, classes, base_classes)
         checkpoint_format = "huggingface_safetensors"
     else:
-        model, classifier, metadata = _load_action_classifier(request["model_id"], classes, weight)
+        model, classifier, metadata = _load_action_classifier(
+            request["model_id"], classes, None if checkpoint else weight,
+            checkpoint_path=weight if checkpoint else None, base_classes=base_classes)
         processor = None
         checkpoint_format = "action_state_dict_safetensors"
     num_frames = int(metadata["num_frames"])
@@ -780,6 +966,37 @@ def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
         val_data = _ActionSamples(val_samples, metadata, False)
     train_loader = DataLoader(train_data, shuffle=True, generator=generator, **common)
     val_loader = DataLoader(val_data, shuffle=False, **common)
+    retention = None
+    retention_loaders = {}
+    if expanding:
+        for split in ("old", "new"):
+            evaluation = request.get("evaluation_datasets", {}).get(split)
+            samples = _action_evaluation_samples(evaluation, classes)
+            if split == "old" and any(sample["label"] not in old_class_ids for sample in samples):
+                raise ValueError(f"{split} 保留效果驗證集包含不屬於該組的類別。")
+            data = (_VideoSamples(samples, processor, num_frames, False) if is_vivit
+                    else _ActionSamples(samples, metadata, False))
+            retention_loaders[split] = DataLoader(data, shuffle=False, **common)
+        emit({"event": "log", "message": "類別擴充：先以來源分類頭評估原類別驗證集，再開始訓練。"})
+        retention = {"metric": "accuracy", "training_mode": "expand_classes", "classes": classes, "base_classes": base_classes,
+                     "old_class_ids": old_class_ids, "new_class_ids": new_class_ids,
+                     "before": {"old": _evaluate_action_classifier(model, retention_loaders["old"], p,
+                                  device, is_vivit, classes, old_class_ids)},
+                     "after": {}, "delta": {}, "checkpoint": "best", "warnings": [], "coverage": {},
+                     "scope": "held-out validation clips; source head before training versus best union head after training",
+                     "preprocessing": "uniform full-clip sampling, no augmentation",
+                     "baseline_prediction_classes": "base_classes", "after_prediction_classes": "all union classes"}
+        for split, expected_ids in (("old", old_class_ids), ("new", new_class_ids)):
+            observed = {sample["label"] for sample in retention_loaders[split].dataset.samples}
+            missing = [classes[index] for index in expected_ids if index not in observed]
+            retention["coverage"][split] = {"observed_class_ids": sorted(observed), "missing_classes": missing,
+                                            "expected_class_count": len(expected_ids), "class_count": len(observed),
+                                            "sample_count": len(retention_loaders[split].dataset.samples)}
+            if missing:
+                retention["warnings"].append(f"{split} 驗證集未涵蓋 {len(missing)} 個類別，不能代表這些類別的保留效果。")
+            if split == "new" and observed.intersection(old_class_ids):
+                retention["warnings"].append("new accuracy 代表新資料集（含原有重疊類別），不是僅新增類別的 accuracy。")
+        _write_json(output / "retention.json", retention)
     metrics = []
     csv_path = output / "metrics.csv"
     fields = ["epoch", "train_loss", "val_loss", "accuracy", "train_accuracy", "lr", "seconds"]
@@ -791,7 +1008,10 @@ def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
                 "num_frames": num_frames, "classes": classes, "params": p,
                 "augmentation": "temporal stratified sampling + clip-consistent horizontal flip" if p["augmentation"] else "none",
                 "validation": "uniform full-clip sampling, no augmentation",
-                "head_reset": True, "checkpoint_format": checkpoint_format})
+                "head_reset": not expanding and metadata.get("source_classes") != classes,
+                "training_mode": "expand_classes" if expanding else "standard",
+                "copied_class_rows": base_classes or [], "checkpoint_source": str(weight),
+                "checkpoint_format": checkpoint_format})
 
     def save_checkpoint(name, epoch):
         destination = output / name
@@ -807,7 +1027,9 @@ def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
                         "num_classes": len(classes), "classes": classes, "preprocessing": metadata,
                         "checkpoint_format": checkpoint_format, "head_activation": "identity"})
         _write_json(destination / "workbench_training.json", {"model_id": request["model_id"], "epoch": epoch,
-                    "classes": classes, "params": p, "dataset_id": dataset.get("id"), "inference_input": "video"})
+                    "classes": classes, "params": p, "dataset_id": dataset.get("id"), "inference_input": "video",
+                    "training_mode": "expand_classes" if expanding else "standard",
+                    "class_expansion": expansion if expanding else None})
 
     for epoch in range(1, p["epochs"] + 1):
         started = time.monotonic()
@@ -877,14 +1099,28 @@ def _train_classifier(request: dict, p: dict, output: Path, emit: Emit) -> dict:
             scheduler.step()
         if should_stop:
             break
+    if retention is not None:
+        from safetensors.torch import load_file
+        # Evaluate the chosen best checkpoint, not the final optimizer state.
+        model.load_state_dict(load_file(str(output / "best" / "model.safetensors")), strict=True)
+        retention["after"] = {split: _evaluate_action_classifier(model, loader, p, device, is_vivit, classes)
+                              for split, loader in retention_loaders.items()}
+        retention["delta"]["old"] = retention["after"]["old"]["accuracy"] - retention["before"]["old"]["accuracy"]
+        retention["best_epoch"] = stopper.best_epoch
+        _write_json(output / "retention.json", retention)
+        _write_json(output / "best" / "retention.json", retention)
+        emit({"event": "log", "message": f"原類別 accuracy：{retention['before']['old']['accuracy']:.1%} → "
+              f"{retention['after']['old']['accuracy']:.1%}；新資料集 {retention['after']['new']['accuracy']:.1%}。"})
     best_archive = Path(shutil.make_archive(str(output / "best"), "zip", root_dir=output / "best"))
     last_archive = Path(shutil.make_archive(str(output / "last"), "zip", root_dir=output / "last"))
     emit({"event": "progress", "progress": 1.0, "message": "微調完成，已保存 safetensors、前處理設定與類別名稱"})
     return {"checkpoint_path": str(best_archive), "artifacts": {"best": str(best_archive), "last": str(last_archive),
             "metrics": str(csv_path), "metrics_json": str(output / "metrics.json"),
-            "config": str(output / "training_config.json"), "effective_config": str(output / "effective_training.json")},
+            "config": str(output / "training_config.json"), "effective_config": str(output / "effective_training.json"),
+            **({"retention": str(output / "retention.json")} if retention is not None else {})},
             "summary": f"完成 {len(metrics)} 輪行為分類微調；最佳 epoch {stopper.best_epoch}，val loss {stopper.best_value:.5f}。"
                        "ZIP 含 safetensors、模型與前處理設定。",
             "training": {"model_id": request["model_id"], "checkpoint_format": checkpoint_format,
                          "checkpoint_directory": str(output / "best"), "classes": classes, "best_epoch": stopper.best_epoch,
+                         "retention": retention,
                          "early_stopping": stopper.summary()}}

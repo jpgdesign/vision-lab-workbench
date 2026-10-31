@@ -439,6 +439,126 @@ def run_action(request, output, emit, device, *, loaded_model=None):
 DETECTOR_IDS = {"yolov12x", "yolo26x", "grounding_dino_base", "rf_detr_2xl"}
 
 
+def create_dinov3_model(device="cpu", checkpoint_path=None, model_weight_path=None):
+    from .model_registry import validate_checkpoint, validate_weight
+    from .training_dinov3 import load_classifier, _load_backbone
+    if checkpoint_path:
+        path = validate_checkpoint("dinov3_7b", checkpoint_path)
+        model, processor, metadata = load_classifier(path, device)
+        return model, processor, {**metadata, "mode": "classification"}
+    from transformers import AutoImageProcessor
+    path = validate_weight("dinov3_7b", model_weight_path or WEIGHTS["dinov3_7b"])
+    folder = path if path.is_dir() else path.parent
+    model = _load_backbone(folder).to(device).eval()
+    processor = AutoImageProcessor.from_pretrained(str(folder), local_files_only=True)
+    return model, processor, {"mode": "embedding", "pooling": "cls", "hidden_size": model.config.hidden_size}
+
+
+def run_dinov3(request, output, emit, device, *, loaded_model=None):
+    """Real CLS embeddings, or fine-tuned image classification per video frame."""
+    import cv2
+    import numpy as np
+    import torch
+    from PIL import Image, ImageOps
+    from .training_dinov3 import prepare_image_pixels
+    model, processor, metadata = loaded_model if loaded_model is not None else create_dinov3_model(
+        device, request.get("checkpoint_path"), request.get("model_weight_path"))
+    source, params = Path(request["media_path"]), request["params"]
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    classified = metadata["mode"] == "classification"
+    embeddings, records, times = [], [], []
+
+    def predict(image, frame, seconds):
+        pixels = prepare_image_pixels(image, processor, device)
+        synchronize(device)
+        start = time.perf_counter()
+        with torch.inference_mode():
+            values = model(pixels) if classified else model(pixel_values=pixels).pooler_output
+        synchronize(device)
+        times.append((time.perf_counter() - start) * 1000)
+        if values is None or values.ndim != 2 or not torch.isfinite(values).all():
+            raise ValueError("DINOv3 輸出不是有效的有限向量。")
+        predictions = []
+        if classified:
+            probabilities = classification_probabilities(values, False)[0].cpu()
+            scores, indices = probabilities.topk(min(int(params.get("top_k", 5)), probabilities.numel()))
+            predictions = [{"label": metadata["labels"][int(index)], "score": float(score)} for score, index in zip(scores, indices)]
+            title = f"Frame class: {predictions[0]['label']} {predictions[0]['score']:.1%}"
+        else:
+            embeddings.append(values[0].float().cpu().numpy())
+            title = f"DINOv3 CLS embedding: {values.shape[-1]} dimensions"
+        records.append({"frame": frame, "seconds": seconds, **({"predictions": predictions} if classified else {"embedding_row": len(embeddings) - 1})})
+        return draw_predictions(np.asarray(image), [], title), predictions
+
+    is_video = source.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+    truncated = False
+    if not is_video:
+        with Image.open(source) as opened:
+            image = ImageOps.exif_transpose(opened).convert("RGB")
+        annotated, preview = predict(image, 0, 0.)
+        media = output / "result.png"
+        annotated.save(media)
+    else:
+        capture, writer = cv2.VideoCapture(str(source)), None
+        try:
+            fps, total = capture.get(cv2.CAP_PROP_FPS), int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            if not capture.isOpened() or not 0 < fps <= 1000:
+                raise ValueError("無法解碼影片。")
+            stride, maximum = int(params.get("frame_stride", 2)), int(params.get("max_frames", 300))
+            frame_index = 0
+            raw = output / "annotated_raw.mp4"
+            while len(records) < maximum:
+                ok, frame = capture.read()
+                if not ok:
+                    break
+                current, frame_index = frame_index, frame_index + 1
+                if current % stride:
+                    continue
+                image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                annotated, predictions = predict(image, current, current / fps)
+                if writer is None:
+                    writer = cv2.VideoWriter(str(raw), cv2.VideoWriter_fourcc(*"mp4v"), fps / stride, annotated.size)
+                    if not writer.isOpened():
+                        raise RuntimeError("無法建立影片輸出。")
+                    preview = predictions
+                    annotated.save(output / "preview.jpg")
+                writer.write(cv2.cvtColor(np.asarray(annotated), cv2.COLOR_RGB2BGR))
+                emit({"event": "progress", "progress": min(.9, .15 + .75 * len(records) / max(1, min(maximum, (total + stride - 1) // stride))),
+                      "message": f"DINOv3 已處理 {len(records)} 個取樣影格"})
+            if not records:
+                raise ValueError("影片沒有可讀取的影格。")
+            writer.release()
+            writer = None
+            media = output / "result.mp4"
+            h264_video(raw, media)
+            truncated = frame_index < total
+        finally:
+            capture.release()
+            if writer is not None:
+                writer.release()
+    document = {"mode": metadata["mode"], "video_mode": "independent_frames", "frames": records}
+    artifacts = {}
+    if not classified:
+        embedding_path = output / "embeddings.npy"
+        matrix = np.stack(embeddings)
+        np.save(embedding_path, matrix, allow_pickle=False)
+        document.update(pooling="cls", embedding_shape=list(matrix.shape), embedding_file=embedding_path.name)
+        artifacts["embeddings"] = str(embedding_path)
+    metadata_path = output / "predictions.json"
+    metadata_path.write_text(json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+    artifacts["predictions"] = str(metadata_path)
+    if is_video:
+        artifacts["preview"] = str(output / "preview.jpg")
+    summary = (f"完成 {len(records)} 張影像分類；影片採獨立逐影格分類，沒有時間動作辨識。" if classified else
+               f"已提取 {len(records)} 個 {matrix.shape[-1]} 維 CLS 視覺表徵；原模型沒有分類標籤。")
+    if truncated:
+        summary += " 已達取樣上限，未處理全片。"
+    return {"media_path": str(media), "media_kind": "video" if is_video else "image", "predictions": preview,
+            "inference_ms": round(sum(times) / len(times), 2), "frames": len(records), "summary": summary,
+            "artifacts": artifacts, "output_mode": metadata["mode"]}
+
+
 def inference_model_key(request, device):
     from .inference_cache import model_cache_key
     from .model_registry import validate_checkpoint, validate_weight
@@ -455,9 +575,15 @@ def inference_model_key(request, device):
         extras.append(ASSETS / "kinetics400.json")
     elif model_id == "videomaev2_giant_k710":
         extras.append(ASSETS / "kinetics710.txt")
-    return model_cache_key(model_id, device, source, checkpoint=bool(checkpoint),
-                           folder_model=model_id in {"grounding_dino_base", "vivit_base_k400"},
-                           extra_metadata=extras)
+    key = model_cache_key(model_id, device, source, checkpoint=bool(checkpoint),
+                         folder_model=model_id in {"grounding_dino_base", "vivit_base_k400", "dinov3_7b"},
+                         extra_metadata=extras)
+    if model_id == "dinov3_7b" and checkpoint:
+        from .inference_cache import ModelCacheKey
+        # Include nested full-backbone shards without hashing 27GB on each hit.
+        backbone = model_cache_key(model_id, device, Path(source) / "backbone", folder_model=True)
+        key = ModelCacheKey(key.identity, key.fingerprint + backbone.fingerprint)
+    return key
 
 
 def _is_out_of_memory(error):
@@ -489,6 +615,7 @@ def run_inference(request, output_dir, emit, *, model_cache=None):
     key = inference_model_key(request, device)
     cache = model_cache if model_cache is not None else InferenceModelCache(max_entries=1)
     detection = request["model_id"] in DETECTOR_IDS
+    dinov3 = request["model_id"] == "dinov3_7b"
     load_seconds = 0.0
     resource = None
     first_oom = None
@@ -500,6 +627,8 @@ def run_inference(request, output_dir, emit, *, model_cache=None):
             if detection:
                 return create_detector(request["model_id"], request["params"], device,
                                        request.get("checkpoint_path"), request.get("model_weight_path"))
+            if dinov3:
+                return create_dinov3_model(device, request.get("checkpoint_path"), request.get("model_weight_path"))
             return create_action_model(request["model_id"], device,
                                        request.get("checkpoint_path"), request.get("model_weight_path"))
         finally:
@@ -512,6 +641,7 @@ def run_inference(request, output_dir, emit, *, model_cache=None):
                 resource, hit = cache.acquire(key, load)
                 emit({"event": "log", "message": "重用已載入模型" if hit else "已載入本次使用的模型"})
                 result = (run_detection(request, output, emit, device, predict=resource) if detection else
+                          run_dinov3(request, output, emit, device, loaded_model=resource) if dinov3 else
                           run_action(request, output, emit, device, loaded_model=resource))
                 result["runtime"] = {"model_cache_hit": bool(hit and not attempt),
                     "model_load_seconds": round(load_seconds, 6),

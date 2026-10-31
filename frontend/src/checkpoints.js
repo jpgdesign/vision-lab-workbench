@@ -7,7 +7,7 @@ export function checkpointChoices(modelId, checkpoints = [], jobs = []) {
   }
   for (const job of jobs) {
     const id = `job:${job.id}`;
-    if (job.model_id !== modelId || job.kind !== 'training' || job.status !== 'completed' || !job.result?.checkpoint_url || choices.has(id)) continue;
+    if (job.model_id !== modelId || job.kind !== 'training' || job.status !== 'completed' || !(job.result?.checkpoint_url || job.result?.training?.checkpoint_directory) || choices.has(id)) continue;
     choices.set(id, { id, model_id: modelId, job_id: job.id, source: 'training_job', valid: true, name: `工作台微調 · ${new Date(job.created_at).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${job.id.slice(0, 6)}`, training: job.result?.training });
   }
   return [...choices.values()];

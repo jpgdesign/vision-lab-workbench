@@ -16,6 +16,8 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 - 物件偵測與整段影片的行為分類；分別顯示來源 FPS、實際傳送速度與辨識更新速度。
 - 自訂執行時間或不設限、停止清理、只保留最新待處理影格。
 - 微調支援資料集驗證、最佳化器、損失函數、排程、梯度累積、混合精度及 Early Stopping；只提供該模型實作支援的選項。
+- 可選標準微調或擴充類別：保留原分類輸出、加入新類別、混合舊資料訓練，並分別比較舊任務訓練前後與新任務的驗證指標。
+- 可從原始模型或已登錄的微調 checkpoint 開始新實驗；訓練前預覽類別合併、名稱對照與資料覆蓋。
 - 權重可留在原資料夾：掃描常用／自訂位置、確認候選、登錄路徑；也可放入 `models/`。
 - 微調成功後，輸出的 checkpoint 自動出現在圖片、影片與即時推論的權重選單；也可登錄外部的相容微調模型。
 - 偵測電腦硬體、Python、PyTorch、CUDA 實際可用狀態；隔離環境安裝工具會先顯示計畫。
@@ -24,17 +26,19 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 
 下表指本工作台已接入的**特定版本**，不表示同系列所有大小、任務或任意外部 checkpoint 均可載入。
 
-| 模型 | 圖片／影片推論 | 即時輸入 | 微調 | 微調資料格式 |
+| 模型（模型 ID） | 圖片／影片推論 | 即時輸入 | 微調／擴充類別 | 微調資料格式 |
 |---|---|---|---|---|
-| YOLOv12x | 物件偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
-| YOLO26x | 物件偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
-| Grounding DINO Base | 文字指定目標偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
-| RF-DETR 2XL | 物件偵測 | 支援 | 支援，需額外套件與原模型授權 | YOLO Detection、COCO Detection |
-| ViViT Base K400 | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
-| X3D-L | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
-| SlowFast R101 8×8 | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
-| VideoMAE V2 Giant K710 | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
-| DINOv3 ViT-7B | 尚未啟用 | 尚未啟用 | 尚未接入 | — |
+| YOLOv12x (`yolov12x`) | 物件偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
+| YOLO26x (`yolo26x`) | 物件偵測 | 支援 | 支援 | YOLO Detection、COCO Detection |
+| Grounding DINO Base (`grounding_dino_base`) | 文字指定目標偵測 | 支援 | 支援；以舊資料定義需保留的提示類別 | YOLO Detection、COCO Detection |
+| RF-DETR 2XL (`rf_detr_2xl`) | 物件偵測 | 支援 | 支援，需額外套件與原模型授權 | YOLO Detection、COCO Detection |
+| ViViT Base K400 (`vivit_base_k400`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
+| X3D-L (`x3d_l`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
+| SlowFast R101 8×8 (`slowfast_r101_8x8`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
+| VideoMAE V2 Giant K710 (`videomaev2_giant_k710`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
+| DINOv3 ViT-7B (`dinov3_7b`) | 原始視覺表徵；微調分類頭的影像／逐幀分類 | 尚未接入 | 分類接頭已接入；擴充需既有分類 checkpoint | ImageFolder |
+
+DINOv3 原始權重是視覺表徵骨幹，沒有 COCO 或 Kinetics 的分類輸出；推論輸出 pooled embedding 檔案與預覽，監督微調會建立線性分類頭。完整 7B 權重與所需環境都齊全時才允許執行；接頭存在不代表已下載完成，也不代表 12 GB GPU 能負擔完整 7B 參數微調。
 
 行為模型預設分析最近 4 秒，再均勻取樣架構所需的影格；它們輸出整段分類，不提供逐人追蹤或動作起訖定位。30 FPS 輸入不代表每秒完成 30 次分類。
 
@@ -46,16 +50,40 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 | Grounding DINO | SGD、Adam、AdamW、Adagrad、RMSprop | Grounding DINO 原生複合損失 | 完整／凍結主幹 |
 | RF-DETR 2XL | AdamW | RF-DETR 原生複合損失 | 完整／凍結主幹 |
 | 四款行為模型 | SGD、Adam、AdamW、Adagrad、RMSprop | Cross Entropy、Focal | 分類頭／完整 |
+| DINOv3 影像分類 | SGD、Adam、AdamW、Adagrad、RMSprop | Cross Entropy、Focal | 分類頭／完整 |
 
-Early Stopping 的監控指標依模型而定：YOLO／RF-DETR 使用驗證 mAP50–95；Grounding DINO／行為模型使用驗證損失。`patience=0` 停用提前停止。
+Early Stopping 的監控指標依模型而定：YOLO／RF-DETR 使用驗證 mAP50–95；Grounding DINO／行為模型／DINOv3 分類使用驗證損失。`patience=0` 停用提前停止。
 
 YOLO 的暖身學習率從 0 增加至設定值，避免原生 `warmup_bias_lr=0.1` 遠高於微調學習率。實際 AMP、暖身與訓練參數會在第一批之前寫入 `effective_training.json`；出現 NaN／Inf 時仍會停止，請檢查學習率或關閉混合精度後重試。
 
 Grounding DINO 會保留完整訓練類別提示。若 token 數超過原始 `max_text_len`，接頭會在載入模型前增加長度，上限為本機文字骨幹的位置容量（預設 BERT 為 512）。超過容量會明確拒絕，不截斷類別；完整提示與有效長度會保存至 checkpoint，供推論重載。
 
+### 保留原有類別並擴充
+
+在微調頁選擇「擴充類別 · 保留原有類別並追加」，提供**新任務資料集**與**舊資料集**，再按「驗證擴充計畫」。預覽會列出原有／追加／總類別數，以及新舊資料的訓練和驗證覆蓋；變更來源權重、資料、類別對照或超參數後，需要重新驗證。
+
+- **標準微調**依新資料集建立輸出類別。未在新資料中的原類別不會自動保留；只凍結主幹也不會恢復被替換的輸出。
+- **擴充類別**保持原類別順序，將新類別追加在後。YOLO、RF-DETR 與分類模型保留對應的原分類權重列，新類別才初始化；RF-DETR 的原始 COCO category ID 另作明確映射。
+- **舊資料混合**讓原任務樣本與新樣本共同參與訓練。原資料不會被改寫。舊資料必須覆蓋要保留的原類別，並有獨立驗證切分；只提供便當資料無法驗證 person、car 等原類別是否保留。
+- **標註完整性**同一張偵測影像裡，所有要學習的新舊類別物件都應標註。把只標新類別的圖片直接混入訓練，可能讓未標註的舊物件被當成背景；類別映射無法補出缺少的框。新驗證切分若缺少部分新類別，預覽會提示該類別無法被有效評估。
+- **名稱對照**可將新資料的不同名稱指向同一個原類別。只有經確認的同義類別才應合併，例如 `broccoli` 與 `cauliflower` 不能只因視覺相似就自動合併。
+- **分開驗證**在訓練前測原始權重的舊任務，結束後測最佳權重的舊任務和新任務。介面與 `retention.json` 顯示 mAP50–95 或 Accuracy，以及舊任務的差值。這些指標只反映提供的驗證資料，仍可能下降，並非保證不遺忘。
+
+Grounding DINO 是開放詞彙模型；從原始權重擴充時，舊資料的類別定義這次要保留並評估的提示範圍，不能據此宣稱保留全部開放詞彙能力。DINOv3 原始骨幹沒有分類頭，先完成一次標準分類微調，再以該 checkpoint 擴充類別。
+
+從微調 checkpoint 開始的是**新實驗的權重初始化**：載入模型與類別，依本次設定重新建立最佳化器和排程。這不等於精確恢復中斷工作的 optimizer／scheduler／隨機狀態。
+
+### 訓練程式的來源
+
+YOLO 使用安裝版本的 Ultralytics 原生 trainer；RF-DETR 使用 `rfdetr-plus` 原生 trainer。工作台負責資料驗證、參數限制、類別擴充、監控及可攜 checkpoint。Grounding DINO 使用 Transformers 模型及原生 criterion，配合工作台訓練迴圈；ViViT、DINOv3 使用 Transformers 模型 API，X3D／SlowFast 使用 PyTorchVideo 架構，VideoMAE V2 使用其模型實作，配合本專案的 PyTorch 監督訓練迴圈與保存／載入介面。
+
+原生或官方模型 API 不會自動保留所有舊類別；類別擴充與舊任務評估是工作台另外實作的流程。目前提供介面中列出的全參數、凍結主幹、分類頭、資料混合與類別擴充方法，**沒有把 LoRA、知識蒸餾或任意自訂 loss 標示為已支援**。
+
 ### 驗證範圍
 
 Windows + RTX 3060 12 GB 上，八款模型已完成真實 GPU 推論。YOLO26x、X3D-L、Grounding DINO 與 RF-DETR 2XL 完成過小型資料集的訓練、存檔及回測。其他訓練接頭有參數與流程測試，但未全部完成大型正式資料集訓練。
+
+類別擴充另有分類列保留、映射、資料覆蓋、訓練前後驗證及存檔重載測試；DINOv3 接頭以小型模型驗證完整 CPU 訓練流程。這些測試不代表各最大模型都完成過實機完整訓練，DINOv3 7B 尤其需要另外準備全部權重與足夠硬體。
 
 測試影片與小型切分用於確認流程，不能作為辨識準確率排名。Linux／macOS 的安裝與 CPU 路徑採可攜式設計；完整模型組合的實機驗證目前以 Windows／NVIDIA 為主。
 
@@ -108,7 +136,7 @@ RF-DETR 2XL 的 `rfdetr-plus` 為額外選配，不包含在預設安裝中。�
 | **X3D-L** | 50 MB | [官方 Model Zoo](https://github.com/facebookresearch/pytorchvideo/blob/main/docs/source/model_zoo.md) · [下載 X3D_L.pyth](https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/X3D_L.pyth) | 單檔；Kinetics-400 |
 | **SlowFast R101 8×8** | 504 MB | [官方 Model Zoo](https://github.com/facebookresearch/pytorchvideo/blob/main/docs/source/model_zoo.md) · [下載 SLOWFAST_8x8_R101.pyth](https://dl.fbaipublicfiles.com/pytorchvideo/model_zoo/kinetics/SLOWFAST_8x8_R101.pyth) | 單檔；Kinetics-400 |
 | **VideoMAE V2 Giant K710** | 2.03 GB | [官方 Model Zoo](https://github.com/OpenGVLab/VideoMAEv2/blob/master/docs/MODEL_ZOO.md) · [下載 K710 微調權重](https://huggingface.co/OpenGVLab/VideoMAE2/resolve/706cc172d65ebd4dedbee3f9c0183a93df9fa125/mae-g/vit_g_hybrid_pt_1200e_k710_ft.pth) | 單檔 `vit_g_hybrid_pt_1200e_k710_ft.pth`；此為 K710 分類 checkpoint |
-| **DINOv3 ViT-7B/16 LVD-1689M（選配，尚未啟用）** | **26.86 GB** | [Meta 官方模型／申請存取](https://huggingface.co/facebook/dinov3-vit7b16-pretrain-lvd1689m) | 須獲核准並登入 Hugging Face；6 個權重分片與設定。**工作台目前尚未提供推論或微調接頭** |
+| **DINOv3 ViT-7B/16 LVD-1689M（選配）** | **26.86 GB** | [Meta 官方模型／申請存取](https://huggingface.co/facebook/dinov3-vit7b16-pretrain-lvd1689m) | 須獲核准並登入 Hugging Face；6 個權重分片與設定。影像分類微調需完整目錄，硬體需求另計 |
 
 大小按十進位 MB／GB 計算，指上列指定權重與必要設定的磁碟下載量，**不是 RAM／VRAM 需求**；不含 Python、PyTorch、CUDA runtime、下載暫存與訓練產物。前八款合計約 **4.62 GB**；加上選配 DINOv3 約 **31.48 GB**。連結與檔案大小於 2026-10-18 核對；權重各自遵循原提供者授權。
 
@@ -159,7 +187,7 @@ hf download google/vivit-b-16x2-kinetics400 config.json preprocessor_config.json
 </details>
 
 <details>
-<summary><strong>DINOv3 7B 選配下載（26.86 GB；工作台接頭尚未啟用）</strong></summary>
+<summary><strong>DINOv3 7B 選配下載（26.86 GB）</strong></summary>
 
 先到 [Meta 模型頁](https://huggingface.co/facebook/dinov3-vit7b16-pretrain-lvd1689m) 申請這個 **ViT-7B** repository 的存取權；核准後，在終端使用同一帳號的讀取 token 登入。瀏覽器登入與終端登入分開；能否下載以這個 ViT-7B repository 的實際存取狀態為準。
 
@@ -168,7 +196,7 @@ hf auth login
 hf download facebook/dinov3-vit7b16-pretrain-lvd1689m --revision b80367753773648a6793235ab9c65cdbb029506f --include "*.safetensors" "*.json" "LICENSE.md" "README.md" --local-dir models/dinov3_7b
 ```
 
-登入指令會互動式詢問 token，無須把 token 寫進指令、README 或 Git。須保留全部 6 個分片、權重索引與設定；下載完成不會讓尚未接入的 DINOv3 推論／微調功能自動啟用。
+登入指令會互動式詢問 token，無須把 token 寫進指令、README 或 Git。須保留全部 6 個分片、權重索引與設定；登錄後會驗證完整性與環境。分類微調輸出會保存整個 backbone、processor、分類頭與類別設定，不會額外自動壓縮一份數十 GB 的 ZIP。
 
 </details>
 

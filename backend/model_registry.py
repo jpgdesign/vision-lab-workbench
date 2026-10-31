@@ -135,7 +135,7 @@ def validate_weight(model_id: str, value) -> Path:
 
 
 def validate_checkpoint(model_id: str, value) -> Path:
-    if model_id not in FILES or model_id == "dinov3_7b":
+    if model_id not in FILES:
         raise ValueError("此模型尚未提供微調權重接頭。")
     path = _absolute(value)
     if model_id in {"yolov12x", "yolo26x"}:
@@ -156,6 +156,23 @@ def validate_checkpoint(model_id: str, value) -> Path:
     classes = metadata.get("classes", metadata.get("dataset_classes"))
     if metadata.get("model_id") != model_id or not isinstance(classes, list) or not classes or not all(isinstance(c, str) and c for c in classes):
         raise ValueError("微調中繼資料的 model_id 或 classes 不正確。")
+    if model_id == "dinov3_7b":
+        # Portable classifier checkpoints contain a complete nested backbone.
+        # Keep this verification free of torch/transformers imports at startup.
+        from .training_dinov3 import checkpoint_metadata as dinov3_metadata
+        folder, config = dinov3_metadata(folder)
+        if _directory_link(folder) or _directory_link(folder / "backbone"):
+            raise ValueError("DINOv3 checkpoint 不能使用目錄連結。")
+        backbone_config = _json(folder / "backbone" / "config.json")
+        if (backbone_config.get("model_type") != "dinov3_vit"
+                or type(config.get("hidden_size")) is not int or config["hidden_size"] < 1
+                or config["hidden_size"] != backbone_config.get("hidden_size")):
+            raise ValueError("DINOv3 分類頭與 backbone 架構不一致。")
+        for current in (folder, folder / "backbone"):
+            for member in current.iterdir():
+                if member.is_symlink() or not member.resolve().is_relative_to(folder.resolve()):
+                    raise ValueError("DINOv3 checkpoint 檔案不可連結至資料夾外。")
+        return folder
     if model_id in HF_TYPES:
         validate_weight(model_id, folder)
         if model_id == "vivit_base_k400":
@@ -180,8 +197,11 @@ def checkpoint_metadata(path):
     if not metadata_path.is_file():
         metadata_path = folder / "training_config.json"
     metadata = _json(metadata_path)
+    if "retention" not in metadata and (folder / "retention.json").is_file():
+        metadata["retention"] = _json(folder / "retention.json")
     return {"model_id": metadata.get("model_id"), "classes": metadata.get("classes", metadata.get("dataset_classes", [])),
-            **{key: metadata[key] for key in ("caption", "checkpoint_format") if key in metadata}}
+            **{key: metadata[key] for key in ("caption", "checkpoint_format", "base_classes", "training_mode",
+                                             "inference_input", "video_mode", "class_expansion", "retention") if key in metadata}}
 
 
 class ModelRegistry:

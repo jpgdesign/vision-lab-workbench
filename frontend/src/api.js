@@ -1,3 +1,15 @@
+export function apiErrorMessage(detail, status) {
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail)) return detail.map(value => typeof value === 'string' ? value : value?.msg || JSON.stringify(value)).join('；') || `要求失敗 (${status})`;
+  if (detail && typeof detail === 'object') {
+    const parts = [detail.message, ...(Array.isArray(detail.errors) ? detail.errors : [])]
+      .filter(value => value != null && value !== '')
+      .map(value => typeof value === 'string' ? value : value?.msg || JSON.stringify(value));
+    if (parts.length) return parts.join('；');
+  }
+  return `要求失敗 (${status})`;
+}
+
 export async function api(path, options = {}) {
   const { body, ...rest } = options;
   const isForm = body instanceof FormData;
@@ -6,7 +18,8 @@ export async function api(path, options = {}) {
   try { result = await response.json(); } catch { throw new Error(response.ok ? '伺服器回傳無法解析的資料。' : `伺服器錯誤 ${response.status}`); }
   if (!response.ok) {
     const detail = result.detail || result.error || result.message;
-    const error = new Error(typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map(v => v.msg || JSON.stringify(v)).join('；') : `要求失敗 (${response.status})`);
+    const error = new Error(apiErrorMessage(detail, response.status));
+    error.detail = detail;
     error.status = response.status;
     error.retryAfter = response.headers.get('Retry-After');
     throw error;
