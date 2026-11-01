@@ -11,7 +11,7 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 ## 功能
 
 - 圖片／影片推論畫布：新增區塊、拖曳排列、調整參數、比較預訓練與微調權重。
-- 多模型應用工作檯：連接 OpenCV 影像處理、偵測、骨架、追蹤、動作、視覺表徵、物件關係與規則節點；提供十五個可修改模板、流程驗證及圖片／影片／即時串流執行。既有 ComfyUI 可透過 31 種原生自訂節點使用相同資源。
+- 多模型應用工作檯：連接 OpenCV 影像處理、偵測、骨架、追蹤、動作、視覺表徵、物件關係與規則節點；提供十五個可修改模板、流程驗證及圖片／影片／即時串流執行。完整安裝會準備 ComfyUI，透過 31 種原生自訂節點使用相同資源。
 - 推論區塊依內容自動增高，結果、下載連結與操作按鈕不會被固定高度裁切；預設寬度隨畫布調整，手動尺寸可按區塊標題上的「自動調整區塊尺寸」還原。
 - 素材若曾用於本機已完成工作的訓練集，選取框與勾號顯示紅色，並標示「已用於訓練」。以檔案內容比對，可辨識改名或重新上傳的相同檔案；只用於驗證或推論的素材不會因此標紅。
 - 推論模型保留在記憶體中，換圖片／影片或調整辨識參數時可直接重用；結果顯示是否重用、載入時間與總處理時間。
@@ -23,7 +23,7 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 - 「類別學習方式」旁的「方式差異」資訊卡支援懸停、鍵盤與點按，說明各模式的資料需求、參數更新、原能力保留與推論成本；預覽說明不會改動訓練設定。
 - 可從原始模型或已登錄的微調 checkpoint 開始新實驗；訓練前預覽類別合併、名稱對照與資料覆蓋。
 - 權重可留在原資料夾：掃描常用／自訂位置、確認候選、登錄路徑；也可放入 `models/`。
-- 微調成功後，輸出的 checkpoint 自動出現在推論權重選單；也可登錄外部的相容微調模型。雙分支模型目前供圖片／影片比較使用，尚未接入即時串流。
+- 微調成功後，輸出的 checkpoint 自動出現在推論權重選單；也可登錄外部的相容微調模型。偵測雙分支模型可用於圖片／影片比較及應用工作流；動作與視覺表徵的雙分支模型尚未接入工作流。
 - 偵測電腦硬體、Python、PyTorch、CUDA 實際可用狀態；隔離環境安裝工具會先顯示計畫。
 
 ## 目前支援的模型與微調
@@ -43,7 +43,7 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 | X3D-L (`x3d_l`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | SlowFast R101 8×8 (`slowfast_r101_8x8`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | VideoMAE V2 Giant K710 (`videomaev2_giant_k710`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
-| DINOv3 ViT-7B (`dinov3_7b`) | 原始視覺表徵；微調分類頭的影像／逐幀分類 | 尚未接入 | 分類接頭已接入；擴充需既有分類 checkpoint | ImageFolder |
+| DINOv3 ViT-7B (`dinov3_7b`) | 原始視覺表徵；微調分類頭的影像／逐幀分類 | 應用工作流的 embedding 節點 | 分類接頭已接入；擴充需既有分類 checkpoint | ImageFolder |
 
 在推論比較或即時攝影機選擇 YOLOv12、YOLO26、RF-DETR 後，可用「任務」切換物件偵測／實例分割。兩種任務使用不同權重，切換會清除不相容的 checkpoint 與舊結果。分割顯示半透明遮罩與輪廓，下載的 JSON／JSONL 包含原圖尺寸的 COCO RLE 遮罩；畫面狀態僅保留面積等摘要。偵測模型不能直接變成分割模型；現有便當 bbox 資料也不能直接作為分割監督標註。RF-DETR 的分割 2XL 使用 Apache-2.0 權重與 `rfdetr` 套件，與偵測 2XL 的 PML／`rfdetr-plus` 不同。
 
@@ -83,7 +83,7 @@ Grounding DINO 會保留完整訓練類別提示。若 token 數超過原始 `ma
 
 凍結模式固定使用偵測模型的 `freeze_backbone`，或影像／影片分類的 `head_only`；YOLO 的 `freeze=0` 會自動選完整骨幹。固定骨幹不等於固定原分類頭，因此它不保證原能力。單一模型擴充保持原類別順序，將新類別追加在後；YOLO、RF-DETR 與分類模型複製對應原分類權重列，新類別才初始化，RF-DETR 原始 COCO category ID 另作明確映射。
 
-雙分支模式保存**完整未更新的原模型**及新模型。相同輸入、前處理與參數下，原分支沿用原模型的預測；但合併畫面的排序、框重疊和展示可能改變，不能把整體畫面相同當成保留能力的定義。各分支分數獨立，並不是所有類別共同正規化的機率。執行時依序載入分支，避免強制同時把兩個大型模型放入 GPU，但仍需要更多磁碟、記憶體安排與總處理時間。輸出為 `frozen_branch_bundle` 模型目錄，移轉時需保留完整目錄；目前不能拿雙分支 bundle 再作訓練起點，也尚未接入即時串流。
+雙分支模式保存**完整未更新的原模型**及新模型。相同輸入、前處理與參數下，原分支沿用原模型的預測；但合併畫面的排序、框重疊和展示可能改變，不能把整體畫面相同當成保留能力的定義。各分支分數獨立，並不是所有類別共同正規化的機率。推論比較依序執行分支；應用工作流的偵測節點會保留兩個分支供後續影格重用，因此需要容納兩者的記憶體。輸出為 `frozen_branch_bundle` 模型目錄，移轉時需保留完整目錄；目前不能拿雙分支 bundle 再作訓練起點。
 
 - **舊資料用途**：混合模式的舊資料參與訓練，並須覆蓋原有類別及獨立驗證切分。另兩種模式的舊資料是選填，僅使用其驗證切分評估舊任務，不混入訓練。原資料不會被改寫。
 - **標註完整性**：單一模型擴充時，同一張影像裡所有要學習的新舊類別物件都應標註。只標新類別可能讓未標註的舊物件被當成背景；類別映射無法補出缺少的框。雙分支的新分支使用新任務標註，原分支不更新。
@@ -126,14 +126,20 @@ cd vision-lab-workbench
 python setup.py
 ```
 
-`python setup.py` 只檢查環境與顯示安裝計畫。確認後建立專案自己的 `.venv` 並安裝：
+`python setup.py` 只檢查環境與顯示安裝計畫。執行以下指令會建立工作檯自己的 `.venv`，並準備 ComfyUI：
 
 ```bash
 python setup.py --install
 python launch.py
 ```
 
-Windows 也可使用 `setup.ps1` 與 `START.cmd`。瀏覽器開啟 <http://127.0.0.1:8765/>。
+Windows 首次安裝也可雙擊 **`INSTALL_AND_START.cmd`**，自動安裝並開啟；之後雙擊 **`START.cmd`** 即可。仍須先安裝上述 Python 與 Node.js，安裝過程需要網路及下載空間。
+
+完整安裝預設包含 ComfyUI：先尋找已設定或常見位置的既有安裝；找不到時，從 [ComfyUI 官方專案](https://github.com/Comfy-Org/ComfyUI)下載固定版本，核對 SHA256，放入本專案的 `.tools/ComfyUI/`，另建 `.tools/comfyui-venv/`。安裝器會接入本專案節點；`python launch.py` 隨後啟動／沿用兩個本機服務，匯入 15 個範例並開啟 ComfyUI。工作檯仍可從 <http://127.0.0.1:8765/> 使用，ComfyUI 位於 <http://127.0.0.1:8188/>。
+
+GitHub 的 ZIP／Git clone 包含安裝工具與整合程式；**ComfyUI 本體與環境依賴是在執行安裝器時下載**，沒有將大型環境塞進原始碼包。已存在的 ComfyUI 會沿用其 Python 環境，不會更新其核心或替換 PyTorch；可用 `--comfy-root PATH --comfy-python PATH` 明確指定其他安裝。
+
+新建的 ComfyUI 環境使用 CPU 版 PyTorch，負責畫布、排程與預覽；`VisionWB_*` 模型推論仍由工作檯依實際硬體使用 GPU／CPU。這不代表其他 ComfyUI 生圖節點也會自動取得 CUDA；要使用那些節點的 GPU 環境，可接入已配置完成的 ComfyUI。詳細流程見 [ComfyUI 安裝與整合](docs/comfyui-integration.md)。
 
 安裝工具會檢查作業系統、Python、NVIDIA 驅動及 GPU 架構，選用對應的官方 PyTorch wheel 或 CPU 版本。可用的既有 PyTorch 環境會保留；系統 NVIDIA 驅動不會自動更動。PyTorch wheel 所帶的 CUDA runtime 與系統 `nvcc`／CUDA Toolkit 是不同項目，實際狀態以工具中的 PyTorch CUDA 檢查為準。
 
@@ -145,15 +151,19 @@ Windows 也可使用 `setup.ps1` 與 `START.cmd`。瀏覽器開啟 <http://127.0
 python setup.py --install --profile base
 ```
 
+`base` 預設只安裝工作檯介面，若也需要 ComfyUI 可加 `--with-comfyui`。完整安裝可用 `--without-comfyui` 略過；已配置 ComfyUI 的專案可用 `python launch.py --without-comfyui` 只啟動工作檯。`python launch.py --no-browser` 會啟動服務但不開瀏覽器。
+
 RF-DETR 2XL 的 `rfdetr-plus` 為額外選配，不包含在預設安裝中。具備原模型所需使用權限後再使用安裝工具的 `--with-rfdetr-plus` 選項。工作台只記住使用者的確認；模型權利仍依原提供者條款。
 
 首次安裝會下載程式依賴；**模型權重另外準備**，安裝器不會擅自下載數十 GB 權重。完整安裝參數請執行 `python setup.py --help`。
 
 ## 多模型應用工作檯
 
-「應用工作檯」把影像、偵測框、同一物件的追蹤、時間片段與事件連成一張有型別的流程圖。模型節點使用原有權重或已登錄的**單一模型**微調 checkpoint；目前不接受雙分支 bundle。骨架與物件關係使用下列額外權重，不需要另建微調資料集才能測試。
+「應用工作檯」把影像、偵測框、同一物件的追蹤、時間片段與事件連成一張有型別的流程圖。模型節點使用原有權重或已登錄的微調 checkpoint；偵測節點也接受原模型＋新分支的雙分支 bundle。骨架與物件關係使用下列額外權重，不需要另建微調資料集才能測試。
 
 ### 安裝選配依賴與模型
+
+完整的 ComfyUI 整合安裝已包含工作流執行依賴；以下選項也可用來為未包含它的環境補裝。模型權重仍需另外下載。
 
 ```bash
 # 先顯示計畫；第二行才安裝至專案隔離環境
@@ -167,7 +177,7 @@ python download_workflow_models.py --verify
 python launch.py
 ```
 
-`--with-workflows` 加入固定版本 `onnxruntime==1.23.2` 的 CPU provider，不替換可用的 PyTorch／CUDA。原有偵測器仍需其推論依賴與權重；姿態與骨架需要 PyTorch，姿態另用 Ultralytics。Windows 的 ONNX Runtime 需要相容的 Microsoft Visual C++ 2015–2022 x64 Runtime；若缺少，關係節點會回報錯誤，其他本機節點仍可使用。
+`--with-workflows` 加入固定版本 `onnxruntime==1.23.2` 的 CPU provider；`full` 與 ComfyUI 一起安裝時會自動加入，不替換可用的 PyTorch／CUDA。原有偵測器仍需其推論依賴與權重；姿態與骨架需要 PyTorch，姿態另用 Ultralytics。Windows 的 ONNX Runtime 需要相容的 Microsoft Visual C++ 2015–2022 x64 Runtime；若缺少，關係節點會回報錯誤，其他本機節點仍可使用。
 
 | 應用模型 | 下載大小 | 官方來源與用途 | 授權 |
 |---|---:|---|---|
@@ -179,11 +189,25 @@ python launch.py
 
 預設目錄為 `models/yolo26n_pose/`、`models/stgcnpp_ntu120/` 與 `models/relateanything_convnext_large/`。這三個應用模型也會在專案 `model_weights/`、專案上一層的 `model_weights/` 搜尋相同子目錄。下載器的 `--output-dir` 可更改存放根目錄，但任意外部目錄不會自動加入這三個節點的搜尋範圍；一般偵測／影片模型仍使用原有路徑登錄功能。
 
-### 使用既有 ComfyUI 畫布
+### 使用 ComfyUI 畫布
 
 可在既有 ComfyUI 使用 31 種 `VisionWB_*` 原生自訂節點，串接已登錄的模型、微調權重、OpenCV、追蹤與規則。ComfyUI 與工作檯服務需同時執行；權重及素材依登錄 ID 引用，不需要複製到 ComfyUI。
 
-先啟動工作檯，在本專案目錄執行以下指令；`<ComfyUI>` 請替換成含有 `main.py` 的 ComfyUI 目錄，再重新啟動 ComfyUI：
+一般安裝已自動準備節點與啟動設定：
+
+```console
+python setup.py --install
+python launch.py
+```
+
+要指定既有 ComfyUI，將 `<ComfyUI>` 換成含有 `main.py` 的目錄，`<Python>` 換成該安裝使用的 Python 執行檔：
+
+```console
+python setup.py --install --with-comfyui --comfy-root "<ComfyUI>" --comfy-python "<Python>"
+python launch.py --with-comfyui
+```
+
+若希望自行啟動兩個服務，也保留只安裝橋接／匯出範例的工具：
 
 ```console
 python install_comfyui.py --comfy-root "<ComfyUI>"

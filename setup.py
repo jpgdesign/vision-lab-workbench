@@ -6,6 +6,7 @@ This is an application bootstrap script, not a setuptools package entry point.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import sys
 import tempfile
 
 from backend.system_info import collect_system_info, probe_torch
+from comfy_manager import build_comfy_plan, install_comfy_plan
 
 ROOT = Path(__file__).resolve().parent
 TORCH_VERSION = "2.8.0"
@@ -37,6 +39,39 @@ CAPABILITIES = {"cu126": {5.0, 5.2, 6.0, 6.1, 7.0, 7.5, 8.0, 8.6, 8.9, 9.0},
 
 def venv_python(directory, system=None):
     return Path(directory) / ("Scripts/python.exe" if (system or platform.system()) == "Windows" else "bin/python")
+
+
+def default_environment(root=ROOT):
+    """Keep Windows wheel paths short without changing system long-path policy."""
+    root = Path(root).resolve()
+    registered = root / "runtime/workbench_environment.json"
+    if registered.is_file():
+        value = json.loads(registered.read_text(encoding="utf-8"))
+        target = Path(value["venv"])
+        if value.get("project") != str(root) or not target.is_absolute():
+            raise ValueError("Saved Workbench environment is invalid. Select --venv PATH to register the intended environment.")
+        return target
+    local = root / ".venv"
+    if local.exists() or platform.system() != "Windows" or len(str(local)) <= 80:
+        return local
+    key = hashlib.sha256(str(root).casefold().encode("utf-8")).hexdigest()[:12]
+    return Path.home() / ".vwb/workbench" / key / "venv"
+
+
+def _save_environment(plan):
+    root = Path(plan["project_root"])
+    path = root / "runtime/workbench_environment.json"
+    if path.is_symlink() or path.parent.is_symlink() or getattr(path.parent, "is_junction", lambda: False)():
+        raise ValueError("Workbench environment registration cannot be written through a link.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = {"project": str(root), "venv": plan["venv"], "python": plan["python"]}
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False) as handle:
+        temporary = Path(handle.name)
+        json.dump(value, handle, indent=2)
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def version_tuple(value):
@@ -91,7 +126,8 @@ def choose_torch(system_info, requested="auto"):
 
 
 def build_plan(system_info, target_venv, *, profile="full", requested="auto", repair=False,
-               with_rfdetr_plus=False, with_workflows=False, with_dev=False, skip_frontend=False, target_exists=False):
+               with_rfdetr_plus=False, with_workflows=False, with_dev=False, skip_frontend=False, target_exists=False,
+               comfy_plan=None):
     target = Path(target_venv).resolve()
     wheel = choose_torch(system_info, requested)
     existing = system_info.get("torch", {}) if target_exists else {}
@@ -121,12 +157,16 @@ def build_plan(system_info, target_venv, *, profile="full", requested="auto", re
         notes.append("Optional rfdetr-plus has separate PML terms. Installation does not grant rights or record license acceptance.")
     if with_workflows:
         notes.append("Optional workflows install pinned CPU ONNX Runtime for RelateAnything. Pose/skeleton/relation weights remain separate, verified downloads.")
+    if comfy_plan is not None:
+        errors.extend(comfy_plan.get("errors", []))
+        notes.extend(comfy_plan.get("notes", []))
     return {"install_requested": False, "profile": profile, "venv": str(target),
             "python": str(venv_python(target, system_info["platform"]["system"])),
             "create_venv": not target_exists, "torch_action": "skip" if profile == "base" else "preserve" if preserve else "install",
             "torch": wheel, "preserved_versions": {key: existing.get(key) for key in ("version", "torchvision_version")} if preserve else None,
             "requirements": requirements, "build_frontend": not skip_frontend,
-            "notes": notes, "errors": errors, "sources": SOURCES}
+            "notes": notes, "errors": errors, "sources": SOURCES,
+            "comfyui": comfy_plan}
 
 
 def _run(command, *, cwd=ROOT):
@@ -139,12 +179,28 @@ def execute_plan(plan, *, creator_python=None, repair=False):
         raise ValueError("\n".join(plan["errors"]))
     target = Path(plan["venv"])
     python = Path(plan["python"])
-    if target.exists() and not (target / "pyvenv.cfg").is_file():
+    cache_owned = plan.get("managed_workbench_cache", False)
+    if cache_owned:
+        expected = Path.home() / ".vwb/workbench" / hashlib.sha256(plan["project_root"].casefold().encode("utf-8")).hexdigest()[:12] / "venv"
+        if target != expected:
+            raise ValueError("Managed Workbench environment path does not match its project.")
+        for parent in (target, *target.parents):
+            if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+                raise ValueError("Managed Workbench environment cannot use linked directories.")
+        marker = target.parent / "project.json"
+        owner = {"project": plan["project_root"]}
+        if target.parent.exists():
+            if not marker.is_file() or json.loads(marker.read_text(encoding="utf-8")) != owner:
+                raise ValueError("Refusing to modify an unowned Workbench environment directory.")
+        else:
+            target.parent.mkdir(parents=True)
+            marker.write_text(json.dumps(owner), encoding="utf-8")
+    if target.exists() and not (target / "pyvenv.cfg").is_file() and not cache_owned:
         raise ValueError("Refusing to modify an existing directory without pyvenv.cfg. Choose a project virtual environment with --venv.")
     npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
     if plan["build_frontend"] and not npm:
         raise ValueError("Node.js/npm is required to build the frontend. Install Node.js LTS, or use --skip-frontend with an existing build.")
-    if not target.exists():
+    if not target.exists() or (cache_owned and not (target / "pyvenv.cfg").is_file()):
         _run([creator_python or sys.executable, "-m", "venv", str(target)])
     if not python.is_file():
         raise ValueError("The selected virtual environment has no Python executable: " + str(python))
@@ -183,30 +239,55 @@ def execute_plan(plan, *, creator_python=None, repair=False):
             raise ValueError("Final PyTorch check failed: " + str(checked.get("error")))
         if plan["torch_action"] == "install" and plan["torch"]["variant"] != "cpu" and not checked.get("cuda_available"):
             raise ValueError("CUDA wheels installed, but torch.cuda is unavailable. No driver was changed. Diagnose with this environment before running models.")
+    if plan.get("comfyui") is not None:
+        install_comfy_plan(plan["comfyui"], project_root=ROOT)
+    if plan.get("save_environment"):
+        _save_environment(plan)
     print("Setup complete. Launch with: %s %s" % (subprocess.list2cmdline([str(python)]), subprocess.list2cmdline([str(ROOT / "launch.py")])))
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--install", action="store_true", help="Create/use only the selected venv and install the displayed plan")
-    parser.add_argument("--venv", type=Path, default=ROOT / ".venv", help="Virtual environment path (default: project .venv)")
+    parser.add_argument("--venv", type=Path, help="Virtual environment path (default: project .venv; long Windows paths use an owned short path)")
     parser.add_argument("--profile", choices=("full", "base"), default="full", help="base: API/UI only; full: model runtimes, no weights")
     parser.add_argument("--torch", choices=("auto", "cpu", "cu126", "cu128"), default="auto")
     parser.add_argument("--repair-torch", action="store_true", help="Explicitly replace an existing torch/torchvision pair")
     parser.add_argument("--with-rfdetr-plus", action="store_true", help="Opt in to the separate PML-licensed runtime; does not grant license rights")
     parser.add_argument("--with-workflows", action="store_true", help="Install optional pinned CPU ONNX Runtime for local relation workflows; does not download weights")
+    comfy_group = parser.add_mutually_exclusive_group()
+    comfy_group.add_argument("--with-comfyui", dest="with_comfyui", action="store_true", default=None,
+                             help="Install/reuse ComfyUI, its isolated environment and Workbench nodes (default for full profile)")
+    comfy_group.add_argument("--without-comfyui", dest="with_comfyui", action="store_false", help="Skip ComfyUI provisioning")
+    parser.add_argument("--comfy-root", type=Path, help="Reuse an existing ComfyUI directory containing main.py")
+    parser.add_argument("--comfy-python", type=Path, help="Interpreter belonging to that existing ComfyUI installation")
     parser.add_argument("--with-dev", action="store_true", help="Install test dependencies")
     parser.add_argument("--skip-frontend", action="store_true", help="Do not run npm ci/build")
     parser.add_argument("--json", action="store_true", help="Print diagnostics and plan as JSON")
     args = parser.parse_args(argv)
-    target = args.venv.expanduser().resolve()
+    use_comfy = args.with_comfyui if args.with_comfyui is not None else args.profile == "full"
+    if not use_comfy and (args.comfy_root or args.comfy_python):
+        parser.error("--comfy-root/--comfy-python require ComfyUI; use --with-comfyui or remove --without-comfyui.")
+    try:
+        target = (args.venv or default_environment(ROOT)).expanduser().resolve()
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print("Setup stopped: " + str(exc), file=sys.stderr)
+        return 1
     target_python = venv_python(target)
     exists = target_python.is_file() and (target / "pyvenv.cfg").is_file()
     info = collect_system_info(ROOT, refresh=True, python_executable=target_python if exists else sys.executable)
+    comfy_plan = build_comfy_plan(ROOT, comfy_root=args.comfy_root, comfy_python=args.comfy_python,
+                                 creator_python=sys.executable) if use_comfy else None
     plan = build_plan(info, target, profile=args.profile, requested=args.torch,
                       repair=args.repair_torch, with_rfdetr_plus=args.with_rfdetr_plus,
-                      with_workflows=args.with_workflows, with_dev=args.with_dev, skip_frontend=args.skip_frontend, target_exists=exists)
+                      with_workflows=args.with_workflows or (use_comfy and args.profile == "full"),
+                      with_dev=args.with_dev, skip_frontend=args.skip_frontend, target_exists=exists, comfy_plan=comfy_plan)
     plan["install_requested"] = args.install
+    plan.update(project_root=str(ROOT), save_environment=True)
+    cache = Path.home() / ".vwb/workbench" / hashlib.sha256(str(ROOT).casefold().encode("utf-8")).hexdigest()[:12] / "venv"
+    plan["managed_workbench_cache"] = target == cache
+    if plan["managed_workbench_cache"]:
+        plan["notes"].append("Use a private short environment path to avoid Windows package extraction path limits; no Windows settings are changed.")
     if args.json:
         print(json.dumps({"system": info, "plan": plan}, ensure_ascii=False, indent=2))
     else:
@@ -216,6 +297,8 @@ def main(argv=None):
         print("RAM: %s bytes | disk free: %s bytes" % (info["memory"]["total_bytes"], info["disk"]["free_bytes"]))
         print("NVIDIA detected: %s | driver: %s | Torch CUDA available: %s" % (info["nvidia"]["detected"], info["nvidia"]["driver_version"], info["torch"]["cuda_available"]))
         print("Venv: %s | profile: %s | torch: %s (%s)" % (plan["venv"], plan["profile"], plan["torch_action"], plan["torch"]["variant"]))
+        if comfy_plan:
+            print("ComfyUI: %s | core: %s | interpreter: %s" % (comfy_plan["action"], comfy_plan["root"], comfy_plan["python"]))
         for note in plan["notes"]:
             print("- " + note)
         for error in plan["errors"]:

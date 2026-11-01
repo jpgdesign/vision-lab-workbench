@@ -60,3 +60,16 @@ def test_all_templates_export_native_comfy_nodes_instead_of_one_opaque_node(clie
         assert all(node["type"].startswith("VisionWB_") for node in native["nodes"])
         source = next(node for node in native["nodes"] if node["type"] == "VisionWB_source")
         assert source["widgets_values"][0] == "camera"
+
+
+def test_status_uses_registered_installation_instead_of_fixed_home_path(client, tmp_path, monkeypatch):
+    import comfy_manager
+    core = tmp_path / "custom-install"
+    plugin = core / "custom_nodes/vision_workbench"
+    plugin.mkdir(parents=True)
+    (core / "main.py").touch()
+    (plugin / "__init__.py").touch()
+    monkeypatch.setattr(comfy_manager, "load_comfy_config", lambda root: {"root": str(core)})
+    value = client.get("/api/comfy/status").json()
+    assert value["installed"] and value["plugin_installed"]
+    assert value["configuration_error"] is None

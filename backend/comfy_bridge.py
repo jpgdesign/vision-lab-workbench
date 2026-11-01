@@ -39,7 +39,15 @@ def register_comfy_routes(application, media, runtime, load_models=lambda: [], l
     @application.get("/api/comfy/status")
     def status():
         import requests
+        from comfy_manager import load_comfy_config
         installation = Path.home() / "ComfyUI_windows_portable" / "ComfyUI"
+        configuration_error = None
+        try:
+            config = load_comfy_config(Path(__file__).resolve().parents[1])
+            if config:
+                installation = Path(config["root"])
+        except (ValueError, OSError):
+            configuration_error = "ComfyUI 安裝設定無效，請重新執行安裝工具或指定既有路徑。"
         online, version = False, None
         try:
             with requests.Session() as session:
@@ -52,7 +60,8 @@ def register_comfy_routes(application, media, runtime, load_models=lambda: [], l
             pass
         return {"installed": (installation / "main.py").is_file(), "online": online,
                 "version": version, "url": "http://127.0.0.1:8188/",
-                "plugin_installed": (installation / "custom_nodes/vision_workbench/__init__.py").is_file()}
+                "plugin_installed": (installation / "custom_nodes/vision_workbench/__init__.py").is_file(),
+                "configuration_error": configuration_error}
 
     @application.get("/api/comfy/templates")
     def get_templates(source_mode: Literal["media", "camera", "vdo"] = "media"):

@@ -9,6 +9,7 @@ datasets/
 model_weights/
 action_model_weights/
 .cache/
+.tools/
 *.cache
 screenshots/
 *_validation*.json

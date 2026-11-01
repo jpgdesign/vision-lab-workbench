@@ -5,6 +5,16 @@ from pathlib import Path
 import shutil
 
 
+def _safe_destination(path, root):
+    current = path
+    while current != root:
+        if current.is_symlink() or getattr(current, "is_junction", lambda: False)():
+            raise ValueError("ComfyUI 橋接與備份目錄不能透過連結寫入其他位置。")
+        if current.parent == current:
+            raise ValueError("ComfyUI 橋接目標超出指定目錄。")
+        current = current.parent
+
+
 def install(root):
     root = Path(root).expanduser().resolve()
     if not (root / "main.py").is_file() or not (root / "folder_paths.py").is_file():
@@ -13,15 +23,17 @@ def install(root):
     destination = root / "custom_nodes/vision_workbench"
     if destination.is_symlink() or destination.resolve().parent != (root / "custom_nodes").resolve():
         raise ValueError("自訂節點目錄不能重新導向其他位置。")
-    backup = root / "user/vision_workbench_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = root / "user/vision_workbench_backups" / datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     copied = 0
     for path in source.rglob("*"):
         if not path.is_file() or "__pycache__" in path.parts or path.suffix == ".pyc":
             continue
         relative = path.relative_to(source)
         target = destination / relative
+        _safe_destination(target, root)
         if target.exists() and target.read_bytes() != path.read_bytes():
             old = backup / relative
+            _safe_destination(old, root)
             old.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, old)
         target.parent.mkdir(parents=True, exist_ok=True)

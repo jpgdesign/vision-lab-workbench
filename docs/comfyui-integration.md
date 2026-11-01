@@ -4,17 +4,66 @@ ComfyUI 負責畫布、節點連接與操作；Vision Workbench 提供已登錄�
 
 ## 安裝與開啟
 
-1. 先在 Vision Workbench 執行 `python launch.py`，確認 `http://127.0.0.1:8765/` 能開啟。
-2. 在本專案目錄執行以下安裝與範例匯出指令。將 `<ComfyUI>` 換成含有 `main.py`、`folder_paths.py` 的既有 ComfyUI 目錄；Windows portable 通常是 `ComfyUI_windows_portable/ComfyUI`。
+先安裝 Python **3.10–3.12**（建議 3.11）及 Node.js **20 或以上**。在下載／解壓後的專案目錄執行：
 
-   ```console
-   python install_comfyui.py --comfy-root "<ComfyUI>"
-   python export_workflow_templates.py --destination "<ComfyUI>/user/default/workflows/VisionWorkbench"
-   ```
+```console
+python setup.py
+python setup.py --install
+python launch.py
+```
 
-   安裝器會將橋接放到 `custom_nodes/vision_workbench`，變更既有檔案前保留備份。匯出器需要工作檯服務已啟動；會輸出 15 個範例 JSON，並帶入這台電腦已登錄的模型與素材 ID。也可以手動複製 `comfyui/vision_workbench` 資料夾。
-3. 啟動或重新啟動 ComfyUI，開啟它顯示的本機網址；預設為 `http://127.0.0.1:8188/`。
-4. 在節點搜尋中輸入 `Vision Workbench`，即可找到 31 種原生 ComfyUI 節點；從 `Vision Workbench` 側欄載入 15 個預設流程，或開啟剛匯出的工作流檔案。
+第一行只顯示計畫；第二行才下載與安裝。完整 `full` 安裝預設包含 ComfyUI，明確寫成 `python setup.py --install --with-comfyui` 也可以。Windows 可直接雙擊 `INSTALL_AND_START.cmd` 完成安裝及啟動，之後雙擊 `START.cmd`。這些入口不會替電腦安裝 Python 或 Node.js。
+
+安裝器會優先沿用既有 ComfyUI；找不到時，下載固定版本的 [ComfyUI 官方原始碼](https://github.com/Comfy-Org/ComfyUI)，核對 SHA256，建立專案專用的環境。依賴隔離方式遵循 [ComfyUI 官方手動安裝指南](https://docs.comfy.org/installation/manual_install)；此專案另固定版本及下載檢查，以便重現。
+
+| 項目 | 自動安裝／啟動的處理方式 |
+|---|---|
+| ComfyUI 本體 | 新安裝位於 `.tools/ComfyUI/`；既有安裝不會被替換或自動更新 |
+| ComfyUI Python 環境 | 新安裝位於 `.tools/comfyui-venv/`，與工作檯 `.venv/` 分開 |
+| 模型執行環境 | `VisionWB_*` 模型仍由工作檯的 GPU／CPU 環境執行 |
+| 自訂節點 | 安裝到 ComfyUI 的 `custom_nodes/vision_workbench/`；變更既有檔案前備份 |
+| 範例 | 啟動工作檯後匯出 15 個流程至 ComfyUI 的 `user/default/workflows/VisionWorkbench/`；包含目前電腦登錄的素材與模型 ID |
+| 本機設定 | 保存於專案 `runtime/comfyui.json`，不加入 Git 或匯出的工作流 |
+| 啟動 | `python launch.py` 沿用已在運行的相容服務，或啟動兩個服務並開啟 ComfyUI |
+
+新建的 ComfyUI 使用 CPU 版 PyTorch，供畫布、工作排程與預覽使用；辨識及微調的 GPU 能力由工作檯決定。其他 ComfyUI 生圖節點在這個新環境中也使用 CPU。若已有用於生圖的 CUDA／其他 GPU ComfyUI，請沿用該安裝，安裝器不修改它的 Python 套件或驅動。
+
+GitHub ZIP／Git clone 不包含 ComfyUI 本體、Python 環境或大型模型權重；執行 `--install` 才取得 ComfyUI 與套件。請預留環境、下載暫存及模型所需空間；套件下載量會隨平台而異，模型權重仍需依各自的授權另外取得。來源下載、安裝或環境驗證失敗時會回報原因，不會將未完成安裝當作可啟動設定。
+
+啟動後，在節點搜尋輸入 `Vision Workbench` 即可找到 31 種原生節點；從 `Vision Workbench` 側欄或工作流檔案清單載入 15 個預設流程。工作檯網址為 `http://127.0.0.1:8765/`，ComfyUI 為 `http://127.0.0.1:8188/`，兩者只監聽本機。
+
+### 沿用其他位置的 ComfyUI
+
+自動偵測找不到安裝時，可明確指定。`<ComfyUI>` 是含有 `main.py`、`folder_paths.py` 的目錄；`<Python>` 是該安裝實際使用的 Python 執行檔：
+
+```console
+python setup.py --install --with-comfyui --comfy-root "<ComfyUI>" --comfy-python "<Python>"
+python launch.py --with-comfyui
+```
+
+例如 Windows portable 的核心通常位於 `ComfyUI_windows_portable/ComfyUI`，Python 位於相鄰的 `python_embeded/python.exe`。若安裝器無法確認 Python 或依賴缺少，會提示先修復該 ComfyUI；不會在不明環境中直接執行 pip 安裝。
+
+### 只啟動工作檯或手動管理服務
+
+```console
+# 完整工作檯環境，但略過 ComfyUI
+python setup.py --install --without-comfyui
+
+# 已配置 ComfyUI，這次只啟動工作檯
+python launch.py --without-comfyui
+
+# 啟動已配置服務，不開啟瀏覽器
+python launch.py --no-browser
+```
+
+`--profile base` 預設不安裝 ComfyUI；可加 `--with-comfyui` 安裝，但 `base` 仍缺少多數模型執行依賴。若自行管理服務，也保留以下橋接／匯出工具；匯出前需要工作檯已在運行：
+
+```console
+python install_comfyui.py --comfy-root "<ComfyUI>"
+python export_workflow_templates.py --destination "<ComfyUI>/user/default/workflows/VisionWorkbench"
+```
+
+手動安裝橋接後，若 ComfyUI 已在運行，請自行在空閒時重啟以載入節點；啟動器不會終止既有服務或正在執行的任務。
 
 安裝完成後可直接開啟[雙模型＋人體骨架攝影機範例](http://127.0.0.1:8188/?vision_workflow=live-multi-model&source=camera)。網址中的 `vision_workflow` 選擇模板，`source=camera` 指定攝影機來源；只會載入流程，仍需執行並手動連接攝影機。
 
@@ -65,7 +114,7 @@ flowchart LR
 1. 把來源的 `source_mode` 改為 `camera` 或 `vdo`。
 2. 把來源的影像輸出接到需要的模型；各模型的偵測框／骨架接入畫面輸出的對應插槽。
 3. 執行 ComfyUI 流程；`VisionWB_output` 輸出節點內會嵌入即時檢視器，直接在節點中查看來源與模型結果。
-4. 在檢視器選擇 USB／內建／虛擬攝影機，或貼入 VDO.Ninja 觀看連結。先連接取得預覽，再按開始執行。
+4. 在檢視器選擇 USB／內建／虛擬攝影機，或貼入 VDO.Ninja 觀看連結。先連接取得預覽，再按開始執行；「放大即時畫面」可放大同一個檢視器，按 Esc 返回。
 
 載入工作流或打開檢視器不會自動啟用攝影機。即時檢視器使用同一份固定流程快照；修改 ComfyUI 節點後，重新執行才能套用新流程。停止或離開即時執行頁會清理攝影機與即時工作。
 
@@ -79,6 +128,10 @@ flowchart LR
 
 ## 常見問題
 
+- **下載專案後為何還需要下載**：原始碼包包含安裝工具。ComfyUI、Python 套件在首次安裝時取得，模型權重是另一項下載。
+- **ComfyUI 已在運行卻無法沿用**：啟動器會檢查工作檯節點是否存在。若是尚未載入橋接的 ComfyUI，請等任務結束後自行重啟；若 8188 是別的服務，請先處理埠衝突。啟動器不會強制關閉其他程式。
+- **為何新 ComfyUI 顯示 CPU**：新環境用於畫布及橋接；Vision Workbench 的模型仍可用其 CUDA 環境。其他原生 ComfyUI GPU 節點請使用自行配置的 GPU ComfyUI。
+- **安裝失敗怎麼重試**：閱讀錯誤指出的下載、Python、依賴或路徑問題，修復後重新執行同一安裝命令；不要把工作檯和 ComfyUI 的套件混裝到同一環境。
 - **選單沒有模型或素材**：先確認工作檯服務已啟動、資源已登錄，再重新整理 ComfyUI 的資源清單或重新啟動 ComfyUI。
 - **有節點但執行失敗**：檢查工作檯回傳的權重、環境、輸入類型或必接插槽錯誤；ComfyUI 的正常啟動不代表每個模型環境都已安裝。
 - **新類別沒有出現**：確認選了對應模型的微調 checkpoint，而不是原始預訓練權重。

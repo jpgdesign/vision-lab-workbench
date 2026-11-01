@@ -27,6 +27,13 @@ The Python and npm package managers install the dependencies declared in the req
 | React | [MIT](https://github.com/facebook/react/blob/main/LICENSE) |
 | React Flow / XYFlow | [MIT](https://github.com/xyflow/xyflow/blob/main/LICENSE) |
 | Lucide icons | [ISC](https://github.com/lucide-icons/lucide/blob/main/LICENSE) |
+| ComfyUI, downloaded by the full installer or supplied by the user | [Official repository](https://github.com/Comfy-Org/ComfyUI) / [GPL-3.0 license](https://github.com/Comfy-Org/ComfyUI/blob/master/LICENSE) |
+
+## ComfyUI installation and integration
+
+The source release includes the original `comfyui/vision_workbench` bridge and installation tools under this project's AGPL-3.0 license. It does not bundle or relicense ComfyUI itself. A full installation first reuses an existing ComfyUI where available; otherwise it downloads the pinned official source archive recorded in `comfy_manager.py`, verifies its SHA256, and preserves the upstream source tree and `LICENSE` in `.tools/ComfyUI/`.
+
+ComfyUI's Python dependencies are installed separately into the managed ComfyUI environment and retain their respective licenses. Existing user-managed ComfyUI installations retain their code, packages, models, custom nodes and notices. The bridge connects to the local Vision Workbench service; neither its installation nor the included workflow JSON grants rights to third-party model weights or media.
 
 ## Bundled teaching media and annotations
 
