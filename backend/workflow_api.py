@@ -155,6 +155,12 @@ def register_workflow_routes(application, manager, media, load_models, normalize
             ident, kind, params = node["id"], node["type"], node["params"]
             public_node = {"id": ident, "type": kind}
             node_plan.append(public_node)
+            if kind.startswith("cv_"):
+                public_node["device"] = "cpu"
+                if not _dependency_available("cv2"):
+                    errors.append(f"{ident} 尚未安裝 OpenCV；請安裝 requirements-base.txt 的依賴套件。")
+                if item and item["kind"] == "image" and kind in {"cv_background", "cv_optical_flow", "cv_histogram", "cv_track_motion"}:
+                    warnings.append(f"{ident} 需要連續影格；單張圖片只能初始化，動態判定會保持未知。")
             if kind in RULE_KINDS:
                 try:
                     RuleNode(kind, params, ident)

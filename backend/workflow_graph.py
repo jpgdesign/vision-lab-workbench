@@ -75,6 +75,11 @@ NODE_TYPES = [
         port("actions", "actions", required=False, multiple=True), port("events", "events", required=False, multiple=True),
         port("relations", "relations", required=False, multiple=True)], [port("frame", "frame")]),
 ]
+from .workflow_opencv_catalog import opencv_catalog
+from .workflow_cv_rules import cv_rules_catalog
+
+NODE_TYPES.extend(opencv_catalog(node, param, port))
+NODE_TYPES.extend(cv_rules_catalog(node, param, port))
 CATALOG = {item["type"]: item for item in NODE_TYPES}
 ASSETS = {"yolo26n_pose": ("yolo26n_pose", "yolo26n-pose.pt"), "stgcnpp_ntu120": ("stgcnpp_ntu120", "stgcnpp_ntu120_hrnet_j.pth"),
           "relateanything_convnext_large": ("relateanything_convnext_large", "relateanything.onnx")}
@@ -176,6 +181,16 @@ def validate_graph(graph):
             if any(e == {**edge, "id": e["id"]} for e in incoming[b]): raise ValueError("不能重複連接相同插槽。")
             incoming[b].append(edge); outgoing[a].append(edge)
         for ident, item in nodes.items():
+            if item["type"].startswith("cv_"):
+                from .workflow_opencv import OPENCV_KINDS, validate_opencv_params
+                from .workflow_cv_rules import CV_RULE_KINDS, validate_cv_rule_params
+                try:
+                    if item["type"] in OPENCV_KINDS:
+                        validate_opencv_params(item["type"], item["params"])
+                    elif item["type"] in CV_RULE_KINDS:
+                        validate_cv_rule_params(item["type"], item["params"])
+                except (ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"{ident} OpenCV 參數不正確：{exc}")
             for p in CATALOG[item["type"]]["inputs"]:
                 if p["required"] and not any(e["targetHandle"] == p["name"] for e in incoming[ident]):
                     errors.append(f"{ident} 缺少 {p['name']} 輸入。")

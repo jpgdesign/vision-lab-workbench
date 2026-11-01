@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizedPoint, parseWorkflowGraph, polygonError, workflowConnectionError, workflowDefaults, workflowDraftNodeStats, workflowFromFlow, workflowGraphErrors, workflowParameterValue, workflowRemoteModels, workflowRemoteNode, workflowToFlow } from '../src/workflowGraph.js';
+import { normalizedPoint, parseWorkflowGraph, polygonError, workflowCatalogGroups, workflowConnectionError, workflowDefaults, workflowDraftNodeStats, workflowFromFlow, workflowGraphErrors, workflowParameterValue, workflowPortLabel, workflowRemoteModels, workflowRemoteNode, workflowTemplateProfile, workflowToFlow } from '../src/workflowGraph.js';
 
 const catalog = [
   { type: 'source', label: '來源', inputs: [], outputs: [{ name: 'frame', type: 'frame' }] },
@@ -94,4 +94,33 @@ test('remote model choices come only from a working integration and reject malfo
   assert.deepEqual(workflowRemoteModels({ ...integration, available: false }), []);
   assert.deepEqual(workflowRemoteModels(null), []);
   assert.deepEqual(workflowRemoteModels({ available: true, models: 'vision-a' }), []);
+});
+
+test('node library searches category, labels, method names and parameters with category filtering', () => {
+  const entries = [
+    { type: 'cv_blur', category: 'OpenCV', label: '模糊', params: [{ key: 'method', label: '方法', options: ['gaussian', 'median'] }] },
+    { type: 'cv_background', category: 'OpenCV', label: '背景減除', params: [{ key: 'method', options: [{ label: '高斯混合', value: 'MOG2' }] }] },
+    { type: 'detector', category: '模型', label: '偵測' },
+  ];
+  assert.deepEqual(workflowCatalogGroups(entries, 'OpenCV gaussian').flatMap(group => group.nodes).map(node => node.type), ['cv_blur']);
+  assert.equal(workflowCatalogGroups(entries, '高斯混合')[0].nodes[0].type, 'cv_background');
+  assert.equal(workflowCatalogGroups(entries, 'mog2')[0].nodes[0].type, 'cv_background');
+  assert.deepEqual(workflowCatalogGroups(entries, '', '模型').map(group => group.nodes.map(node => node.type)), [['detector']]);
+  assert.deepEqual(workflowCatalogGroups(entries, 'unknown', 'OpenCV'), []);
+  assert.deepEqual(workflowCatalogGroups(entries).map(group => group.category), ['OpenCV', '模型']);
+});
+
+test('port labels translate generic handles without changing custom labels or handle identifiers', () => {
+  const frame = { name: 'frame', label: 'frame', type: 'frame' };
+  assert.equal(workflowPortLabel(frame), '影像');
+  assert.equal(frame.name, 'frame');
+  assert.equal(workflowPortLabel({ ...frame, label: '處理後影像' }), '處理後影像');
+  assert.equal(workflowPortLabel({ name: 'extension_port' }), 'extension_port');
+});
+
+test('OpenCV template badges distinguish model-free processing from CV plus learned models', () => {
+  const template = types => ({ graph: { nodes: types.map(type => ({ type })) } });
+  assert.deepEqual(workflowTemplateProfile(template(['source', 'cv_background', 'condition', 'output'])), { opencv: true, needsModel: false, label: 'OpenCV · 無需模型權重' });
+  assert.deepEqual(workflowTemplateProfile(template(['source', 'cv_crop', 'detector', 'output'])), { opencv: true, needsModel: true, label: 'OpenCV ＋ 模型' });
+  assert.equal(workflowTemplateProfile(template(['source', 'pose', 'output'])).opencv, false);
 });

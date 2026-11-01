@@ -19,6 +19,7 @@ MMACTION = ("MMAction2 · 骨架與 RGB 行為辨識", "https://github.com/open-
 SUPERVISION = ("Supervision · 追蹤與區域分析參考", "https://github.com/roboflow/supervision")
 RELATION = ("RelateAnything · 原作者專案", "https://github.com/Maelic/RelateAnything")
 ASFORMER = ("ASFormer · 時序動作分段研究參考", "https://github.com/ChinaYi/ASFormer")
+OPENCV = ("OpenCV · 影像處理與影片分析", "https://docs.opencv.org/4.x/d9/df8/tutorial_root.html")
 
 
 def templates():
@@ -67,4 +68,48 @@ def templates():
                      ("input","frame","review","frame"),("zone","events","review","events"),("zone","tracks","out","observations"),
                      ("zone","events","out","events"),("review","actions","out","actions")], [SAFETY]),
     ]
+    values.extend([
+        build("opencv-preprocess-detect", "OpenCV 裁切與前處理 → 模型", "裁切 → 縮放 → 模糊 → 偵測，將偵測框畫回原圖。可把輸出影像改接前處理節點，檢查模型實際收到的畫面。", [
+            ("input","source",30,100,{}),("crop","cv_crop",330,100,{"roi":[.05,.05,.95,.95]}),
+            ("resize","cv_resize",630,100,{"width":640,"height":480}),
+            ("blur","cv_blur",930,100,{"kernel_size":3,"sigma":.6}),
+            ("detect","detector",1230,100,{}),("out","output",1560,100,{})], [
+                ("input","frame","crop","frame"),("crop","frame","resize","frame"),("resize","frame","blur","frame"),
+                ("blur","frame","detect","frame"),("input","frame","out","frame"),("detect","detections","out","observations")], [OPENCV]),
+        build("opencv-color-contours", "OpenCV 顏色區域 → 輪廓追蹤", "HSV 綠色篩選 → 形態學去雜點 → 輪廓 → 追蹤 → 區域。依素材調整色彩範圍；green_region 是自訂區域標籤，並非物件分類。", [
+            ("input","source",30,100,{}),("color","cv_hsv",330,100,{"lower":[35,50,35],"upper":[90,255,255]}),
+            ("clean","cv_morphology",630,100,{}),("contour","cv_contours",930,100,{"label":"green_region","min_area":150}),
+            ("track","tracker",1230,100,{"labels":[]}),("zone","zone",1530,100,{"anchor":"center","occupancy_limit":3}),
+            ("out","output",1860,100,{})], [
+                ("input","frame","color","frame"),("color","frame","clean","frame"),("clean","frame","contour","frame"),
+                ("contour","detections","track","observations"),("track","tracks","zone","tracks"),
+                ("input","frame","out","frame"),("zone","tracks","out","observations"),("zone","events","out","events")], [OPENCV]),
+        build("opencv-background-motion", "OpenCV 背景減除 → 移動事件", "MOG2 背景模型輸出前景遮罩，前景比例超過門檻並持續才觸發事件。使用固定鏡頭影片（可選預設交通影片）；先暖機 10 幀。", [
+            ("input","source",30,100,{}),("background","cv_background",350,100,{}),
+            ("rule","condition",680,400,{"labels":["motion"],"min_duration":.3,"min_score":.5}),
+            ("out","output",1020,100,{})], [
+                ("input","frame","background","frame"),("background","frame","out","frame"),
+                ("background","actions","rule","actions"),("background","actions","out","actions"),("rule","events","out","events")], [OPENCV]),
+        build("opencv-optical-flow", "OpenCV 光流 → 移動強度", "Farneback 光流以色彩顯示方向與相對強度；平均像素速度超過門檻可發事件。影片／即時來源至少兩幀，鏡頭本身移動也會產生光流。", [
+            ("input","source",30,100,{}),("flow","cv_optical_flow",350,100,{}),
+            ("rule","condition",680,400,{"labels":["motion"],"min_duration":.3,"min_score":.5}),
+            ("out","output",1020,100,{})], [
+                ("input","frame","flow","frame"),("flow","frame","out","frame"),
+                ("flow","actions","rule","actions"),("flow","actions","out","actions"),("rule","events","out","events")], [OPENCV]),
+        build("opencv-roi-monitor", "OpenCV 監控區域 → 追蹤移動與停留", "依 ZoneGuard 的區域監控概念獨立建立：多邊形 ROI → 偵測 → 追蹤 → 像素速度 → 停留事件。ROI 節點可切換著色、保留區內或保留區外。", [
+            ("input","source",30,100,{}),("roi","cv_roi",330,100,{}),
+            ("detect","detector",630,100,{}),("track","tracker",930,100,{}),
+            ("motion","cv_track_motion",1230,100,{}),("zone","zone",1530,100,{}),
+            ("out","output",1860,100,{})], [
+                ("input","frame","roi","frame"),("roi","frame","detect","frame"),("roi","frame","out","frame"),
+                ("detect","detections","track","observations"),("track","tracks","motion","tracks"),
+                ("motion","tracks","zone","tracks"),("motion","actions","out","actions"),
+                ("zone","tracks","out","observations"),("zone","events","out","events")], [ZONE, OPENCV]),
+        build("opencv-appearance-change", "OpenCV 外觀比較 → 變化事件", "比較相鄰影格的 HSV 直方圖，相似度下降並持續才觸發。可改成對照第一幀，或連入追蹤物件改為逐物件比較；不等於特定行為辨識。", [
+            ("input","source",30,100,{}),("histogram","cv_histogram",350,100,{}),
+            ("rule","condition",680,400,{"labels":["appearance_change"],"min_duration":.3,"min_score":.5}),
+            ("out","output",1020,100,{})], [
+                ("input","frame","histogram","frame"),("histogram","frame","out","frame"),
+                ("histogram","actions","rule","actions"),("histogram","actions","out","actions"),("rule","events","out","events")], [SAFETY, OPENCV]),
+    ])
     return {"templates": values}

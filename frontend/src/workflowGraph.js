@@ -123,3 +123,31 @@ export function workflowRemoteModels(integration) {
   if (!integration?.available || !Array.isArray(integration.models)) return [];
   return [...new Set(integration.models.filter(value => typeof value === 'string' && value.trim()))];
 }
+
+export function workflowCatalogGroups(catalog, query = '', category = '') {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const groups = new Map();
+  for (const spec of catalog) {
+    const name = spec.category || '節點';
+    if (category && category !== name) continue;
+    const search = [spec.label, spec.type, name, spec.description,
+      ...(spec.params || []).flatMap(param => [param.key, param.label, param.description,
+        ...(param.options || []).map(value => typeof value === 'object' ? `${value.value} ${value.label}` : value)])].join(' ').toLocaleLowerCase();
+    if (!terms.every(term => search.includes(term))) continue;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(spec);
+  }
+  return [...groups].map(([category, nodes]) => ({ category, nodes }));
+}
+
+const workflowPortNames = { frame: '影像', detections: '偵測框', poses: '人體骨架', observations: '物件觀察', tracks: '追蹤物件', actions: '動作／狀態', events: '事件', relations: '物件關係', objects: '物件', signals: '狀態／事件' };
+export function workflowPortLabel(port) {
+  return port?.label && port.label !== port.name ? port.label : workflowPortNames[port?.name] || port?.label || port?.name || '';
+}
+
+export function workflowTemplateProfile(template) {
+  const types = (template.graph?.nodes || []).map(node => node.type);
+  const opencv = types.some(type => type.startsWith('cv_'));
+  const needsModel = types.some(type => ['detector', 'pose', 'skeleton_action', 'video_action', 'relation', 'vlm'].includes(type));
+  return { opencv, needsModel, label: opencv ? needsModel ? 'OpenCV ＋ 模型' : 'OpenCV · 無需模型權重' : '模型與規則' };
+}

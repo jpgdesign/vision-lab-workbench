@@ -14,6 +14,9 @@ import time
 from .workflow_graph import CATALOG, validate_graph
 from .workflow_rules import KINDS as RULE_KINDS, RuleNode
 from .workflow_tracking import TrackerNode
+from .workflow_frames import IDENTITY, coordinate_space, route_inputs
+from .workflow_opencv import OPENCV_KINDS, OpenCVNode
+from .workflow_cv_rules import CV_RULE_KINDS, CVRuleNode
 
 MAX_FRAME_RECORDS = 20_000
 MAX_EVENT_RECORDS = 100_000
@@ -102,6 +105,8 @@ def render_output(frame, inputs, recent_events):
         seen.add(identity)
         label = str(item.get("label", "object"))
         if item.get("track_id") is not None: label += f" #{item['track_id']}"
+        speed = item.get("motion", {}).get("speed_px_s")
+        if isinstance(speed, (int, float)) and math.isfinite(speed): label += f" · {speed:.1f} px/s"
         boxes.append({**item, "label": label, "score": float(item.get("score", 0))})
     image = draw_predictions(np.asarray(frame["image"]), boxes)
     draw = ImageDraw.Draw(image, "RGBA")
@@ -110,6 +115,9 @@ def render_output(frame, inputs, recent_events):
     font = ImageFont.truetype(str(font_path), size) if font_path.exists() else ImageFont.load_default()
     bones = [(0,1),(0,2),(1,3),(2,4),(5,6),(5,7),(7,9),(6,8),(8,10),(5,11),(6,12),(11,12),(11,13),(13,15),(12,14),(14,16)]
     for item in observations:
+        polygon = item.get("polygon", [])
+        if len(polygon) >= 3:
+            draw.line([tuple(p) for p in polygon] + [tuple(polygon[0])], fill=(140,246,190,230), width=2)
         joints = item.get("keypoints", [])
         if len(joints) != 17: continue
         valid = lambda j: len(j) >= 3 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in j[:3]) and j[2] >= .3
@@ -121,12 +129,15 @@ def render_output(frame, inputs, recent_events):
                 x,y = joint[:2]; draw.ellipse((x-2,y-2,x+2,y+2), fill=(140,246,190,255))
     seen_polygons = set()
     for overlay in overlays:
-        if overlay.get("kind") != "polygon": continue
+        if overlay.get("kind") not in {"polygon", "line"}: continue
         points = [(float(x) * image.width, float(y) * image.height) for x,y in overlay["points"]]
         key = (str(overlay.get("label")), tuple(points))
         if key in seen_polygons: continue
         seen_polygons.add(key)
-        draw.polygon(points, fill=(111,180,160,25), outline=(145,232,193,220), width=2)
+        if overlay.get("kind") == "line":
+            draw.line(points, fill=(145,232,193,220), width=2)
+        else:
+            draw.polygon(points, fill=(111,180,160,25), outline=(145,232,193,220), width=2)
         draw.text(points[0], f"{overlay.get('label', '')} · {overlay.get('count', 0)}", font=font, fill=(201,255,221,255), stroke_width=1, stroke_fill=(0,0,0,255))
     for relation in relations[:20]:
         a, b = relation.get("subject_box"), relation.get("object_box")
@@ -142,7 +153,12 @@ def render_output(frame, inputs, recent_events):
         scope = f"#{item['track_id']}" if item.get("track_id") is not None else item.get("scope", "scene")
         age = max(0., frame["timestamp"] - float(item.get("timestamp", frame["timestamp"])))
         suffix = f" (last {age:.1f}s)" if age > .1 else ""
-        lines.append(f"{scope}: {item.get('label', 'unknown')} {item.get('score', 0):.2f}{suffix}")
+        metrics = []
+        for key, unit in (("mean_speed_px_s", "px/s"), ("speed_px_s", "px/s"), ("motion_ratio", "ratio"), ("similarity", "similarity")):
+            value = item.get(key)
+            if isinstance(value, (int, float)) and math.isfinite(value): metrics.append(f"{value:.2f} {unit}")
+        detail = " · " + ", ".join(metrics) if metrics else f" {item.get('score', 0):.2f}"
+        lines.append(f"{scope}: {item.get('label', 'unknown')}{detail}{suffix}")
     for event in list(recent_events)[-3:]:
         if 0 <= frame["timestamp"] - event.get("timestamp", 0) <= 4:
             lines.append(f"{event['timestamp']:.2f}s {event.get('label', 'event')}")
@@ -174,6 +190,8 @@ class WorkflowEngine:
         ident, kind, params = node["id"], node["type"], node["params"]
         if ident not in self.instances:
             if kind in RULE_KINDS: instance = RuleNode(kind, params, ident)
+            elif kind in OPENCV_KINDS: instance = OpenCVNode(kind, params, ident)
+            elif kind in CV_RULE_KINDS: instance = CVRuleNode(kind, params, ident)
             elif kind == "tracker": instance = TrackerNode(params, ident)
             elif kind == "vlm": instance = RemoteNode(params, self.request["runtime_path"])
             else:
@@ -197,7 +215,7 @@ class WorkflowEngine:
                 if hasattr(instance, "reset"): instance.reset()
             self.recent_events.clear()
         self.last_context = (context, timestamp)
-        frame = {"image": image, "timestamp": float(timestamp), "frame_index": int(frame_index), "width": image.width, "height": image.height, "source_id": source}
+        frame = {"image": image, "timestamp": float(timestamp), "frame_index": int(frame_index), "width": image.width, "height": image.height, "source_id": source, "to_source": IDENTITY}
         values, final, frame_events = {}, image, []
         for ident in self.order:
             node = self.nodes[ident]; kind = node["type"]
@@ -210,6 +228,7 @@ class WorkflowEngine:
                 else: inputs[name] = incoming
             started = time.perf_counter()
             try:
+                inputs, node_frame = route_inputs(inputs, frame)
                 if kind == "source": result = {"frame": packet([], frame)}
                 elif kind == "output":
                     seen = set()
@@ -219,12 +238,12 @@ class WorkflowEngine:
                             if identity not in seen:
                                 seen.add(identity); frame_events.append(json_value(event))
                     self.recent_events.extend(frame_events); self.event_count += len(frame_events)
-                    final = render_output(frame, inputs, self.recent_events)
-                    result = {"frame": packet([], frame)}
+                    final = render_output(node_frame, inputs, self.recent_events)
+                    result = {"frame": packet([], {**node_frame, "image": final})}
                 elif kind == "condition" and not inputs.get("actions", {}).get("fresh", True):
-                    result = {"events": packet([], frame, fresh=False)}
+                    result = {"events": packet([], node_frame, fresh=False)}
                 else:
-                    result = self._instance(node).process(inputs, frame)
+                    result = self._instance(node).process(inputs, node_frame)
                     for value in result.values():
                         value.setdefault("fresh", True)
                         for event in value.get("items", []):
@@ -246,7 +265,8 @@ class WorkflowEngine:
         # telemetry per live frame would grow the worker's internal log forever.
         if self.request.get("kind") != "live":
             self.emit({"event": "node", "node_stats": list(self.stats.values())})
-        observations = {ident: {port: json_value({k:v for k,v in p.items() if k not in {"frame", "display_items"}})
+        observations = {ident: {port: json_value({**{k:v for k,v in p.items() if k not in {"frame", "display_items"}},
+                                                 "coordinate_space": coordinate_space(p.get("frame", frame))})
                                for port,p in ports.items() if port != "frame"}
                         for ident,ports in values.items() if self.nodes[ident]["type"] != "source"}
         return final, frame_events, observations
@@ -346,7 +366,7 @@ def run_workflow(request, output, emit):
         if not math.isfinite(fps) or fps <= 0: raise ValueError("影片沒有有效 FPS，無法建立可靠的動作時間軸。")
         total = max(0,int(capture.get(cv2.CAP_PROP_FRAME_COUNT)))
         target, raw = output / "workflow_result.mp4", output / "workflow_raw.avi"
-        index, previous, previous_index, pts_origin = 0, -1., 0, None
+        index, previous, previous_index, pts_origin, output_size = 0, -1., 0, None, None
         while artifacts.count < limit:
             ok, bgr = capture.read()
             if not ok: break
@@ -363,9 +383,19 @@ def run_workflow(request, output, emit):
             image = fit_image(Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)), maximum)
             result, events, observations = engine.process(image,timestamp,index)
             if writer is None:
-                writer = cv2.VideoWriter(str(raw),cv2.VideoWriter_fourcc(*"MJPG"),fps/stride,result.size)
+                output_size = result.size
+                encoded_size = tuple(value + value % 2 for value in output_size)
+                writer = cv2.VideoWriter(str(raw),cv2.VideoWriter_fourcc(*"MJPG"),fps/stride,encoded_size)
                 if not writer.isOpened(): raise ValueError("無法建立結果影片。")
-            writer.write(cv2.cvtColor(np.asarray(result),cv2.COLOR_RGB2BGR))
+            elif result.size != output_size:
+                raise ValueError("影片中途變更輸出尺寸；請在輸出前加入固定尺寸的 OpenCV 縮放節點。")
+            pixels = cv2.cvtColor(np.asarray(result),cv2.COLOR_RGB2BGR)
+            # MJPG and yuv420 encoders silently crop odd sizes. Pad only the
+            # right/bottom edge to retain every processed pixel and coordinate.
+            if encoded_size != output_size:
+                pixels = cv2.copyMakeBorder(pixels, 0, encoded_size[1]-output_size[1], 0,
+                                            encoded_size[0]-output_size[0], cv2.BORDER_CONSTANT, value=0)
+            writer.write(pixels)
             artifacts.append(timestamp,index,events,observations)
             emit({"event":"progress", "progress": min(.98,artifacts.count/max(1,min(limit,math.ceil(total/stride)) if total else limit)), "message":f"工作流已處理 {artifacts.count} 幀 · 來源 {timestamp:.2f} 秒"})
             index += 1
@@ -374,6 +404,8 @@ def run_workflow(request, output, emit):
         h264_video(raw,target)
         result = artifacts.result(target,"video")
         result.update(source_fps=fps,frame_stride=stride,timestamp_basis="source_pts_with_fps_fallback",output_timing="constant_source_fps_divided_by_stride")
+        result["output_dimensions"] = {"content": list(output_size), "encoded": list(encoded_size),
+                                        "padding_right": encoded_size[0]-output_size[0], "padding_bottom": encoded_size[1]-output_size[1]}
         return result
     finally:
         if capture is not None: capture.release()

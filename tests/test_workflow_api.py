@@ -91,6 +91,33 @@ def test_catalog_and_all_original_templates_are_structurally_valid(api):
         assert workflow_graph.validate_graph(item["graph"])["valid"],item["id"]
 
 
+def test_opencv_preflight_rejects_invalid_kernel_before_enqueuing_and_reports_dependency(api, monkeypatch):
+    value = graph("opencv-preprocess-detect")
+    blur = chosen(value, "cv_blur")
+    blur["params"]["kernel_size"] = 4
+    result = api["client"].post("/api/workflows/validate", json={"graph": value, "media_id": "movie"})
+    assert result.status_code == 200 and not result.json()["valid"]
+    assert any("OpenCV" in text for text in result.json()["errors"])
+    assert api["app"].state.jobs.list() == []
+    blur["params"]["kernel_size"] = 5
+    monkeypatch.setattr(workflow_api, "_dependency_available", lambda name: name != "cv2")
+    result = api["client"].post("/api/workflows/validate", json={"graph": value, "media_id": "movie"})
+    assert not result.json()["valid"] and any("尚未安裝 OpenCV" in text for text in result.json()["errors"])
+
+
+def test_model_free_opencv_run_requires_no_model_weights(api):
+    for model in api["models"]:
+        model["available"] = model["environment_available"] = False
+    value = graph("opencv-background-motion")
+    checked = api["client"].post("/api/workflows/validate", json={"graph": value, "media_id": "movie"}).json()
+    assert checked["valid"], checked["errors"]
+    cv_nodes = [node for node in checked["plan"]["nodes"] if node["type"].startswith("cv_")]
+    assert cv_nodes and all(node["device"] == "cpu" for node in cv_nodes)
+    response = api["client"].post("/api/workflows/run", json={"graph": value, "media_id": "movie"})
+    assert response.status_code == 201, response.text
+    assert request_file(api, response)["resolved_nodes"] == {}
+
+
 def test_save_incomplete_draft_list_and_delete_exact_registered_file(api):
     client=api["client"]
     draft={"version":1,"nodes":[{"id":"input","type":"source"}],"edges":[]}
