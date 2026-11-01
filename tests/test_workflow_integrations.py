@@ -22,16 +22,19 @@ def setup(tmp_path, monkeypatch, response):
     return keyfile, session
 
 
-def test_credentials_stay_server_side_and_only_fixed_host(tmp_path, monkeypatch):
+@pytest.mark.parametrize("prefix", ["", "LMSTUDIO_GATEWAY_API_KEY="])
+def test_credentials_stay_server_side_and_only_fixed_host(tmp_path, monkeypatch, prefix):
     response = Mock(status_code=200)
     response.json.return_value = {"data":[{"id":"vision-model"},{"id":KEY}]}
     path, session = setup(tmp_path,monkeypatch,response)
+    path.write_text(prefix + KEY, encoding="utf-8")
     public = integration.configure(tmp_path,path)
     saved = integration.config_path(tmp_path).read_text()
     assert KEY not in saved and KEY not in json.dumps(public)
     assert str(path) not in json.dumps(public)
     assert public["munolith"]["models"] == ["vision-model"]
     assert session.get.call_args.args[0] == integration.BASE_URL+"/models"
+    assert session.get.call_args.kwargs["headers"]["Authorization"] == "Bearer " + KEY
     assert session.get.call_args.kwargs["allow_redirects"] is False
 
 

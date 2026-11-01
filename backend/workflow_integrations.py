@@ -21,12 +21,21 @@ def read_key(path):
     for line in raw.splitlines():
         value = line.strip().strip("\"'")
         if not value or value.startswith(("http", "#")): continue
-        match = re.match(r"(?i)^(?:api[_ -]?key|token|authorization)\s*[:=]\s*(.+)$", value)
+        # Accept common .env names, including LMSTUDIO_GATEWAY_API_KEY.
+        # Match a named credential assignment, never split arbitrary raw keys
+        # on '=': base64 credentials may legitimately end in padding.
+        match = re.match(
+            r"(?i)^(?:export\s+)?(?:(?:[a-z_][a-z0-9_]*_)?(?:api_key|access_token|auth_token|token)"
+            r"|api[ -]?key|authorization)\s*[:=]\s*(.*)$", value)
         if match: value = match.group(1).strip().strip("\"'")
+        else:
+            metadata = re.match(r"^(?:export\s+)?[A-Z_][A-Z0-9_]*\s*=\s*(.*)$", value)
+            if metadata and metadata.group(1).strip("=").strip():
+                continue  # e.g. API_BASE_URL; trailing base64 padding survives.
         value = re.sub(r"(?i)^Bearer\s+", "", value)
         if re.fullmatch(r"[A-Za-z0-9_./+=:-]{16,}", value): candidates.append(value)
     if len(candidates) != 1:
-        raise ValueError("無法從檔案辨識唯一金鑰；請只保留金鑰或 API_KEY=金鑰。")
+        raise ValueError("無法從檔案辨識唯一金鑰；請只保留金鑰，或 API_KEY／LMSTUDIO_GATEWAY_API_KEY=金鑰。")
     return candidates[0]
 
 
