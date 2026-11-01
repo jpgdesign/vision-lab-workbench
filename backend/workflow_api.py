@@ -20,6 +20,7 @@ from .jobs import write_json_atomic
 from .live_limits import DEFAULT_CAPTURE_FPS, MAX_CAPTURE_FPS
 from .workflow_rules import KINDS as RULE_KINDS, RuleNode
 from .workflow_templates import templates
+from .workflow_samples import with_samples
 
 
 class _Input(BaseModel):
@@ -170,11 +171,11 @@ def register_workflow_routes(application, manager, media, load_models, normalize
                 labels = params.get("labels")
                 if not isinstance(labels, list) or any(not isinstance(v, str) or not v.strip() or len(v) > 256 for v in labels):
                     errors.append(f"{ident} 追蹤類別必須是非空字串清單。")
-            if kind in {"detector", "video_action"}:
+            if kind in {"detector", "video_action", "embedding"}:
                 model_id, checkpoint_id = params["model_id"], params.get("checkpoint_id") or None
                 public_node.update(model_id=model_id, checkpoint_id=checkpoint_id)
                 model = models.get(model_id)
-                tasks = {"detection", "segmentation"} if kind == "detector" else {"action"}
+                tasks = {"detection", "segmentation"} if kind == "detector" else {"embedding"} if kind == "embedding" else {"action"}
                 if not model or model.get("task") not in tasks or not model.get("inference_supported"):
                     errors.append(f"{ident} 所選模型不支援這個節點的工作類型。")
                     continue
@@ -187,14 +188,18 @@ def register_workflow_routes(application, manager, media, load_models, normalize
                     if not (weights.get("checkpoint_path") or weights.get("model_weight_path")) or not path.exists():
                         raise ValueError("missing weight")
                     if is_bundle(weights.get("checkpoint_path")):
-                        errors.append(f"{ident} 工作流目前只支援單模型 checkpoint；請選擇單一權重，不可使用雙分支模型包。")
-                        continue
+                        if kind != "detector":
+                            errors.append(f"{ident} 此節點的雙分支模型包尚未支援；請選擇單一權重。")
+                            continue
+                        from .dual_branch import validate_bundle
+                        validate_bundle(weights["checkpoint_path"], model_id)
+                        warnings.append(f"{ident} 會同時載入原始與微調兩個偵測分支，分數各自保留；需要較多記憶體。")
                     allowed = {p["key"] for p in model.get("capabilities", {}).get("inference_params", [])}
                     selected = {"device": options["device"]}
                     if kind == "detector":
                         selected.update({key: params[key] for key in ("conf", "imgsz", "max_det", "prompt", "use_training_classes") if key in params and key in allowed})
                     else:
-                        selected["top_k"] = 5
+                        selected["top_k"] = params.get("top_k", 5)
                     selected = {key: value for key, value in selected.items() if key in allowed}
                     clean = normalize_params(model_id, "inference", selected, allow_missing_weights=bool(checkpoint_id and not model.get("available")))
                     if model_id == "grounding_dino_base" and clean.get("use_training_classes"):
@@ -266,7 +271,7 @@ def register_workflow_routes(application, manager, media, load_models, normalize
 
     @application.get("/api/workflows/templates")
     def get_templates():
-        return templates()
+        return with_samples(templates(), media.list())
 
     @application.get("/api/workflows")
     def list_workflows():

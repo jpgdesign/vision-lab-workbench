@@ -1,0 +1,2021 @@
+[
+  {
+    "type": "source",
+    "label": "影像／影片來源",
+    "category": "來源",
+    "description": "使用左側選取的素材；所有節點共用原始時間軸。",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": []
+  },
+  {
+    "type": "detector",
+    "label": "物件偵測／分割",
+    "category": "模型",
+    "description": "可選既有模型與微調權重；分割模型同時回傳區域外框。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "detections",
+        "label": "detections",
+        "type": "detections",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "model_id",
+        "label": "模型",
+        "default": "yolo26x",
+        "type": "select",
+        "model_task": "detection"
+      },
+      {
+        "key": "checkpoint_id",
+        "label": "微調權重",
+        "default": "",
+        "type": "select"
+      },
+      {
+        "key": "conf",
+        "label": "信心閾值",
+        "default": 0.25,
+        "type": "number",
+        "min": 0.01,
+        "max": 0.99,
+        "step": 0.01
+      },
+      {
+        "key": "imgsz",
+        "label": "輸入邊長",
+        "default": 640,
+        "type": "number",
+        "min": 320,
+        "max": 1280,
+        "step": 32
+      },
+      {
+        "key": "max_det",
+        "label": "最多物件",
+        "default": 40,
+        "type": "number",
+        "min": 1,
+        "max": 100,
+        "step": 1
+      },
+      {
+        "key": "prompt",
+        "label": "Grounding DINO 文字目標",
+        "default": "person . helmet . safety vest .",
+        "type": "string"
+      },
+      {
+        "key": "use_training_classes",
+        "label": "使用完整微調類別",
+        "default": false,
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "type": "pose",
+    "label": "人體骨架 · YOLO26n Pose",
+    "category": "模型",
+    "description": "本機 COCO 17 關節與信心分數；不是動作分類。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "poses",
+        "label": "poses",
+        "type": "poses",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "conf",
+        "label": "人體信心閾值",
+        "default": 0.35,
+        "type": "number",
+        "min": 0.01,
+        "max": 0.99,
+        "step": 0.01
+      },
+      {
+        "key": "imgsz",
+        "label": "輸入邊長",
+        "default": 640,
+        "type": "number",
+        "min": 320,
+        "max": 1280,
+        "step": 32
+      }
+    ]
+  },
+  {
+    "type": "embedding",
+    "label": "視覺表徵／影像分類 · DINOv3",
+    "category": "模型",
+    "description": "輸出真正的 CLS 向量；若選擇已訓練的分類 checkpoint，另輸出影像類別。原始表徵不會自動產生物件標籤。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "embeddings",
+        "label": "embeddings",
+        "type": "embeddings",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "model_id",
+        "label": "表徵模型",
+        "default": "dinov3_7b",
+        "type": "select",
+        "model_task": "embedding"
+      },
+      {
+        "key": "checkpoint_id",
+        "label": "分類微調權重",
+        "default": "",
+        "type": "select"
+      },
+      {
+        "key": "every_seconds",
+        "label": "推論間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 120,
+        "step": 0.1
+      },
+      {
+        "key": "normalize",
+        "label": "向量 L2 正規化",
+        "default": true,
+        "type": "boolean"
+      },
+      {
+        "key": "top_k",
+        "label": "分類候選數",
+        "default": 5,
+        "type": "number",
+        "min": 1,
+        "max": 20,
+        "step": 1
+      },
+      {
+        "key": "min_score",
+        "label": "分類信心下限",
+        "default": 0.25,
+        "type": "number",
+        "min": 0,
+        "max": 1,
+        "step": 0.01
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "觀察最大間隔（秒）",
+        "default": 5.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 120,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "tracker",
+    "label": "物件追蹤",
+    "category": "處理",
+    "description": "以 IoU 與位置配對維持工作內的追蹤 ID；遮擋後重新出現可能取得新 ID。",
+    "inputs": [
+      {
+        "name": "observations",
+        "label": "observations",
+        "type": "observations",
+        "required": true,
+        "multiple": false,
+        "accepts": [
+          "detections",
+          "poses"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "labels",
+        "label": "追蹤類別（空陣列＝全部）",
+        "default": [
+          "person"
+        ],
+        "type": "json"
+      },
+      {
+        "key": "max_age_seconds",
+        "label": "追蹤失聯上限（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 10,
+        "step": 0.1
+      },
+      {
+        "key": "min_iou",
+        "label": "配對 IoU 下限",
+        "default": 0.15,
+        "type": "number",
+        "min": 0.01,
+        "max": 0.95,
+        "step": 0.01
+      }
+    ]
+  },
+  {
+    "type": "zone",
+    "label": "區域／停留規則",
+    "category": "規則",
+    "description": "可畫多個區域，輸出進出、停留及人數事件；失聯不當作已離開。",
+    "inputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "zones",
+        "label": "區域（名稱與相對座標）",
+        "default": [
+          {
+            "name": "restricted",
+            "points": [
+              [
+                0.35,
+                0.2
+              ],
+              [
+                0.8,
+                0.2
+              ],
+              [
+                0.8,
+                0.95
+              ],
+              [
+                0.35,
+                0.95
+              ]
+            ]
+          }
+        ],
+        "type": "json"
+      },
+      {
+        "key": "anchor",
+        "label": "判定位置",
+        "default": "foot",
+        "type": "select",
+        "options": [
+          "foot",
+          "center"
+        ]
+      },
+      {
+        "key": "dwell_seconds",
+        "label": "停留事件門檻（秒）",
+        "default": 3.0,
+        "type": "number",
+        "min": 0,
+        "max": 3600,
+        "step": 0.1
+      },
+      {
+        "key": "occupancy_limit",
+        "label": "人數上限（0＝不判定）",
+        "default": 0,
+        "type": "number",
+        "min": 0,
+        "max": 1000,
+        "step": 1
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "連續觀察最大間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 30,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "posture",
+    "label": "姿態／跌倒候選規則",
+    "category": "規則",
+    "description": "依幾何關節與姿態轉換判定，與學習式動作分類分開；遮擋時為 unknown。",
+    "inputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "keypoint_confidence",
+        "label": "關節信心下限",
+        "default": 0.5,
+        "type": "number",
+        "min": 0.05,
+        "max": 0.99,
+        "step": 0.05
+      },
+      {
+        "key": "fall_transition_seconds",
+        "label": "姿態快速轉換（秒）",
+        "default": 1.2,
+        "type": "number",
+        "min": 0.1,
+        "max": 10,
+        "step": 0.1
+      },
+      {
+        "key": "fall_hold_seconds",
+        "label": "躺姿持續（秒）",
+        "default": 1.5,
+        "type": "number",
+        "min": 0.1,
+        "max": 30,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "skeleton_action",
+    "label": "骨架動作 · ST-GCN++",
+    "category": "模型",
+    "description": "NTU120 預訓練時序模型；每個追蹤 ID 保持獨立關節序列。短序列／缺關節不作可靠動作判定。",
+    "inputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "window_seconds",
+        "label": "骨架時間窗（秒）",
+        "default": 4.0,
+        "type": "number",
+        "min": 1,
+        "max": 15,
+        "step": 0.5
+      },
+      {
+        "key": "min_frames",
+        "label": "最少有效影格",
+        "default": 32,
+        "type": "number",
+        "min": 30,
+        "max": 100,
+        "step": 1
+      },
+      {
+        "key": "every_seconds",
+        "label": "分類間隔（秒）",
+        "default": 0.75,
+        "type": "number",
+        "min": 0.1,
+        "max": 10,
+        "step": 0.1
+      },
+      {
+        "key": "min_score",
+        "label": "分類信心下限",
+        "default": 0.35,
+        "type": "number",
+        "min": 0.01,
+        "max": 0.99,
+        "step": 0.01
+      }
+    ]
+  },
+  {
+    "type": "video_action",
+    "label": "影片動作分類",
+    "category": "模型",
+    "description": "連接 X3D／SlowFast／ViViT／VideoMAE；整幅影像只代表場景，個人模式需追蹤框裁切。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": false,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "model_id",
+        "label": "行為模型",
+        "default": "x3d_l",
+        "type": "select",
+        "model_task": "action"
+      },
+      {
+        "key": "checkpoint_id",
+        "label": "微調權重",
+        "default": "",
+        "type": "select"
+      },
+      {
+        "key": "scope",
+        "label": "分類範圍",
+        "default": "scene",
+        "type": "select",
+        "options": [
+          "scene",
+          "person"
+        ]
+      },
+      {
+        "key": "window_seconds",
+        "label": "片段長度（秒）",
+        "default": 2.0,
+        "type": "number",
+        "min": 0.5,
+        "max": 10,
+        "step": 0.5
+      },
+      {
+        "key": "every_seconds",
+        "label": "分類間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.25,
+        "max": 10,
+        "step": 0.25
+      },
+      {
+        "key": "min_score",
+        "label": "分類信心下限",
+        "default": 0.25,
+        "type": "number",
+        "min": 0.01,
+        "max": 0.99,
+        "step": 0.01
+      },
+      {
+        "key": "max_people",
+        "label": "最多同時分類人數",
+        "default": 3,
+        "type": "number",
+        "min": 1,
+        "max": 10,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "type": "condition",
+    "label": "狀態／違規條件",
+    "category": "規則",
+    "description": "依標籤、分數與持續時間產生事件；unknown 不累計，場景事件不冒稱屬於特定人。",
+    "inputs": [
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false,
+        "accepts": [
+          "actions",
+          "relations",
+          "events"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "labels",
+        "label": "觸發標籤",
+        "default": [
+          "falling",
+          "fall_candidate"
+        ],
+        "type": "json"
+      },
+      {
+        "key": "min_score",
+        "label": "分數下限",
+        "default": 0.35,
+        "type": "number",
+        "min": 0,
+        "max": 1,
+        "step": 0.01
+      },
+      {
+        "key": "min_duration",
+        "label": "持續時間（秒）",
+        "default": 0.0,
+        "type": "number",
+        "min": 0,
+        "max": 3600,
+        "step": 0.1
+      },
+      {
+        "key": "cooldown",
+        "label": "重複事件間隔（秒）",
+        "default": 5.0,
+        "type": "number",
+        "min": 0,
+        "max": 3600,
+        "step": 0.5
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "兩次有效觀察最大間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 120,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "sequence",
+    "label": "流程順序約束",
+    "category": "規則",
+    "description": "逐人檢查事件／動作順序，產生順序錯誤、完成與逾時事件；不混合不同追蹤 ID。",
+    "inputs": [
+      {
+        "name": "signals",
+        "label": "signals",
+        "type": "events",
+        "required": true,
+        "multiple": false,
+        "accepts": [
+          "events",
+          "actions"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "steps",
+        "label": "順序步驟",
+        "default": [
+          "zone_enter:check",
+          "zone_enter:work",
+          "zone_enter:exit"
+        ],
+        "type": "json"
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "步驟最大間隔（秒）",
+        "default": 30.0,
+        "type": "number",
+        "min": 1,
+        "max": 3600,
+        "step": 1
+      },
+      {
+        "key": "reset_on_complete",
+        "label": "完成後重新開始",
+        "default": true,
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "type": "ppe",
+    "label": "PPE 穿戴規則",
+    "category": "規則",
+    "description": "合併人體追蹤與裝備偵測；安全帽判定需要可見頭部關節，遮擋回傳未知。",
+    "inputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "detections",
+        "label": "detections",
+        "type": "detections",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "helmet_labels",
+        "label": "安全帽標籤",
+        "default": [
+          "helmet",
+          "hard hat"
+        ],
+        "type": "json"
+      },
+      {
+        "key": "vest_labels",
+        "label": "反光背心標籤",
+        "default": [
+          "safety vest",
+          "vest"
+        ],
+        "type": "json"
+      },
+      {
+        "key": "require_helmet",
+        "label": "檢查安全帽",
+        "default": true,
+        "type": "boolean"
+      },
+      {
+        "key": "require_vest",
+        "label": "檢查反光背心",
+        "default": false,
+        "type": "boolean"
+      },
+      {
+        "key": "keypoint_confidence",
+        "label": "頭部關節信心下限",
+        "default": 0.5,
+        "type": "number",
+        "min": 0.05,
+        "max": 0.99,
+        "step": 0.05
+      },
+      {
+        "key": "min_score",
+        "label": "裝備信心下限",
+        "default": 0.3,
+        "type": "number",
+        "min": 0,
+        "max": 1,
+        "step": 0.05
+      },
+      {
+        "key": "missing_hold_seconds",
+        "label": "持續缺少（秒）",
+        "default": 2.0,
+        "type": "number",
+        "min": 0,
+        "max": 120,
+        "step": 0.5
+      },
+      {
+        "key": "cooldown",
+        "label": "事件間隔（秒）",
+        "default": 5.0,
+        "type": "number",
+        "min": 0,
+        "max": 3600,
+        "step": 0.5
+      }
+    ]
+  },
+  {
+    "type": "relation",
+    "label": "關係辨識 · RelateAnything",
+    "category": "模型",
+    "description": "本機 ConvNeXt-L 關係模型，以偵測框為輸入；物件標籤只供顯示，不送入關係模型。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "objects",
+        "label": "objects",
+        "type": "detections",
+        "required": true,
+        "multiple": false,
+        "accepts": [
+          "detections",
+          "tracks"
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "relations",
+        "label": "relations",
+        "type": "relations",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "predicates",
+        "label": "關係詞彙（預載詞庫）",
+        "default": [
+          "holding",
+          "wearing",
+          "riding",
+          "next to",
+          "on"
+        ],
+        "type": "json"
+      },
+      {
+        "key": "min_score",
+        "label": "關係分數下限",
+        "default": 0.3,
+        "type": "number",
+        "min": 0,
+        "max": 1,
+        "step": 0.01
+      },
+      {
+        "key": "top_k",
+        "label": "最多關係",
+        "default": 10,
+        "type": "number",
+        "min": 1,
+        "max": 50,
+        "step": 1
+      },
+      {
+        "key": "every_seconds",
+        "label": "推論間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 30,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "vlm",
+    "label": "雲端視覺判讀",
+    "category": "模型",
+    "description": "透過已設定的 OpenAI 相容 API 傳送影像；須先通過金鑰與模型連線檢查。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": false,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "model_id",
+        "label": "API 模型 ID",
+        "default": "",
+        "type": "string"
+      },
+      {
+        "key": "instruction",
+        "label": "判讀目標",
+        "default": "Describe visible actions and possible safety-rule events. Return only observed evidence; use unknown when uncertain.",
+        "type": "string"
+      },
+      {
+        "key": "every_seconds",
+        "label": "呼叫間隔（秒）",
+        "default": 5.0,
+        "type": "number",
+        "min": 1,
+        "max": 120,
+        "step": 1
+      },
+      {
+        "key": "max_calls",
+        "label": "本次最多 API 呼叫",
+        "default": 10,
+        "type": "number",
+        "min": 1,
+        "max": 120,
+        "step": 1
+      }
+    ],
+    "remote": true
+  },
+  {
+    "type": "merge",
+    "label": "合併事件",
+    "category": "處理",
+    "description": "合併多路事件，不改變來源與追蹤身分。",
+    "inputs": [
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": true,
+        "multiple": true
+      }
+    ],
+    "outputs": [
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": []
+  },
+  {
+    "type": "output",
+    "label": "畫面與事件輸出",
+    "category": "輸出",
+    "description": "輸出標註圖片／影片、事件時間軸與可下載 JSON／CSV。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "observations",
+        "label": "observations",
+        "type": "observations",
+        "required": false,
+        "multiple": true,
+        "accepts": [
+          "detections",
+          "poses",
+          "tracks"
+        ]
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": false,
+        "multiple": true
+      },
+      {
+        "name": "events",
+        "label": "events",
+        "type": "events",
+        "required": false,
+        "multiple": true
+      },
+      {
+        "name": "relations",
+        "label": "relations",
+        "type": "relations",
+        "required": false,
+        "multiple": true
+      },
+      {
+        "name": "embeddings",
+        "label": "embeddings",
+        "type": "embeddings",
+        "required": false,
+        "multiple": true
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": []
+  },
+  {
+    "type": "cv_crop",
+    "label": "OpenCV · 裁切 ROI",
+    "category": "OpenCV",
+    "description": "依相對座標裁切；框與關節可映射回原圖。ROI 格式為 [左, 上, 右, 下]，範圍 0–1。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "roi",
+        "label": "裁切範圍 [左, 上, 右, 下]",
+        "default": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ],
+        "type": "json"
+      }
+    ]
+  },
+  {
+    "type": "cv_resize",
+    "label": "OpenCV · 縮放",
+    "category": "OpenCV",
+    "description": "等比例縮放至指定範圍，或拉伸至指定大小；下游模型使用實際縮放後影像。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "width",
+        "label": "目標寬度",
+        "default": 640,
+        "type": "number",
+        "min": 16,
+        "max": 2048,
+        "step": 1
+      },
+      {
+        "key": "height",
+        "label": "目標高度",
+        "default": 480,
+        "type": "number",
+        "min": 16,
+        "max": 2048,
+        "step": 1
+      },
+      {
+        "key": "mode",
+        "label": "縮放方式",
+        "default": "fit",
+        "type": "select",
+        "options": [
+          "fit",
+          "stretch"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cv_rotate",
+    "label": "OpenCV · 旋轉",
+    "category": "OpenCV",
+    "description": "旋轉影像並保留座標映射；正值為逆時針，展開畫布可避免邊角裁切。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "angle",
+        "label": "逆時針角度",
+        "default": 0.0,
+        "type": "number",
+        "min": -180,
+        "max": 180,
+        "step": 1
+      },
+      {
+        "key": "expand",
+        "label": "展開畫布",
+        "default": true,
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "type": "cv_color",
+    "label": "OpenCV · 灰階／對比",
+    "category": "OpenCV",
+    "description": "灰階、直方圖均衡或 CLAHE 局部對比增強；輸出統一為可接模型的 RGB 畫面。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "mode",
+        "label": "色彩處理",
+        "default": "gray",
+        "type": "select",
+        "options": [
+          "gray",
+          "equalize",
+          "clahe"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cv_blur",
+    "label": "OpenCV · 模糊／降噪",
+    "category": "OpenCV",
+    "description": "Gaussian、median 或 bilateral 濾波；核心大小須為奇數。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "method",
+        "label": "濾波方法",
+        "default": "gaussian",
+        "type": "select",
+        "options": [
+          "gaussian",
+          "median",
+          "bilateral"
+        ]
+      },
+      {
+        "key": "kernel_size",
+        "label": "核心大小（奇數）",
+        "default": 5,
+        "type": "number",
+        "min": 1,
+        "max": 31,
+        "step": 1
+      },
+      {
+        "key": "sigma",
+        "label": "Gaussian sigma／bilateral 強度",
+        "default": 1.2,
+        "type": "number",
+        "min": 0.1,
+        "max": 100,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "cv_threshold",
+    "label": "OpenCV · 二值化",
+    "category": "OpenCV",
+    "description": "固定閾值、Otsu 或局部自適應二值化；可接形態學與輪廓節點。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "method",
+        "label": "二值化方法",
+        "default": "binary",
+        "type": "select",
+        "options": [
+          "binary",
+          "otsu",
+          "adaptive"
+        ]
+      },
+      {
+        "key": "threshold",
+        "label": "固定閾值",
+        "default": 127,
+        "type": "number",
+        "min": 0,
+        "max": 255,
+        "step": 1
+      },
+      {
+        "key": "invert",
+        "label": "反轉黑白",
+        "default": false,
+        "type": "boolean"
+      },
+      {
+        "key": "block_size",
+        "label": "自適應區塊（奇數）",
+        "default": 11,
+        "type": "number",
+        "min": 3,
+        "max": 101,
+        "step": 1
+      },
+      {
+        "key": "constant",
+        "label": "自適應偏移量 C",
+        "default": 2.0,
+        "type": "number",
+        "min": -100,
+        "max": 100,
+        "step": 0.5
+      }
+    ]
+  },
+  {
+    "type": "cv_edges",
+    "label": "OpenCV · Canny 邊緣",
+    "category": "OpenCV",
+    "description": "以 Canny 找影像邊緣；低閾值不可大於高閾值。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "low",
+        "label": "低閾值",
+        "default": 100,
+        "type": "number",
+        "min": 0,
+        "max": 1000,
+        "step": 1
+      },
+      {
+        "key": "high",
+        "label": "高閾值",
+        "default": 200,
+        "type": "number",
+        "min": 0,
+        "max": 1000,
+        "step": 1
+      },
+      {
+        "key": "aperture",
+        "label": "Sobel 核心（3／5／7）",
+        "default": 3,
+        "type": "number",
+        "min": 3,
+        "max": 7,
+        "step": 1
+      },
+      {
+        "key": "l2_gradient",
+        "label": "L2 梯度",
+        "default": false,
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "type": "cv_morphology",
+    "label": "OpenCV · 形態學",
+    "category": "OpenCV",
+    "description": "開運算去雜點、閉運算補孔洞，或侵蝕／膨脹／形態梯度；常接在遮罩後。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "operation",
+        "label": "運算",
+        "default": "opening",
+        "type": "select",
+        "options": [
+          "opening",
+          "closing",
+          "erode",
+          "dilate",
+          "gradient"
+        ]
+      },
+      {
+        "key": "kernel_size",
+        "label": "核心大小（奇數）",
+        "default": 3,
+        "type": "number",
+        "min": 1,
+        "max": 31,
+        "step": 1
+      },
+      {
+        "key": "iterations",
+        "label": "迭代次數",
+        "default": 1,
+        "type": "number",
+        "min": 1,
+        "max": 10,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "type": "cv_hsv",
+    "label": "OpenCV · HSV 顏色遮罩",
+    "category": "OpenCV",
+    "description": "依 HSV 範圍產生遮罩。H 為 0–179，S/V 為 0–255；H 下限大於上限時跨越紅色色環。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "lower",
+        "label": "HSV 下限",
+        "default": [
+          0,
+          80,
+          50
+        ],
+        "type": "json"
+      },
+      {
+        "key": "upper",
+        "label": "HSV 上限",
+        "default": [
+          179,
+          255,
+          255
+        ],
+        "type": "json"
+      },
+      {
+        "key": "invert",
+        "label": "反轉遮罩",
+        "default": false,
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "type": "cv_contours",
+    "label": "OpenCV · 輪廓／幾何物件",
+    "category": "OpenCV",
+    "description": "由二值影像找外輪廓並簡化多邊形，輸出外框供追蹤／區域規則使用；這不是語意辨識。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "detections",
+        "label": "detections",
+        "type": "detections",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "min_area",
+        "label": "最小輪廓面積（像素²）",
+        "default": 100.0,
+        "type": "number",
+        "min": 0,
+        "max": 4194304,
+        "step": 1
+      },
+      {
+        "key": "max_area_ratio",
+        "label": "最大面積比例",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.001,
+        "max": 1,
+        "step": 0.01
+      },
+      {
+        "key": "threshold",
+        "label": "輪廓前二值化閾值",
+        "default": 127,
+        "type": "number",
+        "min": 0,
+        "max": 255,
+        "step": 1
+      },
+      {
+        "key": "max_objects",
+        "label": "最多輪廓",
+        "default": 40,
+        "type": "number",
+        "min": 1,
+        "max": 100,
+        "step": 1
+      },
+      {
+        "key": "label",
+        "label": "幾何物件名稱",
+        "default": "contour",
+        "type": "string"
+      },
+      {
+        "key": "approx_epsilon",
+        "label": "多邊形簡化比例",
+        "default": 0.01,
+        "type": "number",
+        "min": 0.001,
+        "max": 0.2,
+        "step": 0.001
+      }
+    ]
+  },
+  {
+    "type": "cv_background",
+    "label": "OpenCV · 背景減除／移動",
+    "category": "OpenCV",
+    "description": "MOG2／KNN 背景減除；暖機後依前景比例判定 motion/still。僅適合固定攝影機，啟用陰影偵測時排除陰影。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "method",
+        "label": "背景模型",
+        "default": "MOG2",
+        "type": "select",
+        "options": [
+          "MOG2",
+          "KNN"
+        ]
+      },
+      {
+        "key": "history",
+        "label": "背景歷史影格",
+        "default": 200,
+        "type": "number",
+        "min": 2,
+        "max": 2000,
+        "step": 1
+      },
+      {
+        "key": "var_threshold",
+        "label": "MOG2 變異閾值／KNN 距離平方閾值",
+        "default": 16.0,
+        "type": "number",
+        "min": 1,
+        "max": 1000,
+        "step": 1
+      },
+      {
+        "key": "detect_shadows",
+        "label": "偵測並排除陰影",
+        "default": true,
+        "type": "boolean"
+      },
+      {
+        "key": "learning_rate",
+        "label": "更新率（-1＝自動）",
+        "default": -1.0,
+        "type": "number",
+        "min": -1,
+        "max": 1,
+        "step": 0.01
+      },
+      {
+        "key": "warmup_frames",
+        "label": "暖機影格數",
+        "default": 10,
+        "type": "number",
+        "min": 1,
+        "max": 500,
+        "step": 1
+      },
+      {
+        "key": "min_motion_ratio",
+        "label": "移動前景比例門檻",
+        "default": 0.01,
+        "type": "number",
+        "min": 0.0001,
+        "max": 1,
+        "step": 0.001
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "重建背景的斷訊間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.05,
+        "max": 30,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "cv_optical_flow",
+    "label": "OpenCV · 稠密光流",
+    "category": "OpenCV",
+    "description": "Farneback 光流以來源時間計算平均像素速度；相機移動也會產生 motion，不能當作動作分類。色相表示方向、亮度表示速度。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "max_side",
+        "label": "光流計算最長邊",
+        "default": 320,
+        "type": "number",
+        "min": 64,
+        "max": 960,
+        "step": 1
+      },
+      {
+        "key": "levels",
+        "label": "金字塔層數",
+        "default": 3,
+        "type": "number",
+        "min": 1,
+        "max": 6,
+        "step": 1
+      },
+      {
+        "key": "window_size",
+        "label": "光流視窗（奇數）",
+        "default": 15,
+        "type": "number",
+        "min": 3,
+        "max": 51,
+        "step": 1
+      },
+      {
+        "key": "iterations",
+        "label": "迭代次數",
+        "default": 3,
+        "type": "number",
+        "min": 1,
+        "max": 10,
+        "step": 1
+      },
+      {
+        "key": "min_speed_px_s",
+        "label": "平均移動速度門檻（來源像素／秒）",
+        "default": 10.0,
+        "type": "number",
+        "min": 0.01,
+        "max": 10000,
+        "step": 0.5
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "重新取樣的斷訊間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.05,
+        "max": 30,
+        "step": 0.1
+      }
+    ]
+  },
+  {
+    "type": "cv_roi",
+    "label": "OpenCV · 多邊形 ROI／疊色",
+    "category": "OpenCV",
+    "description": "保留或遮掉多邊形區域，也可疊加半透明顏色；區域外遮黑不改變座標。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "points",
+        "label": "多邊形相對座標",
+        "default": [
+          [
+            0.15,
+            0.15
+          ],
+          [
+            0.85,
+            0.15
+          ],
+          [
+            0.85,
+            0.85
+          ],
+          [
+            0.15,
+            0.85
+          ]
+        ],
+        "type": "json"
+      },
+      {
+        "key": "mode",
+        "label": "區域處理",
+        "default": "mask_inside",
+        "type": "select",
+        "options": [
+          "mask_inside",
+          "mask_outside",
+          "tint"
+        ]
+      },
+      {
+        "key": "color",
+        "label": "疊色 RGB",
+        "default": [
+          100,
+          180,
+          150
+        ],
+        "type": "json"
+      },
+      {
+        "key": "alpha",
+        "label": "疊色透明度",
+        "default": 0.3,
+        "type": "number",
+        "min": 0,
+        "max": 1,
+        "step": 0.05
+      }
+    ]
+  },
+  {
+    "type": "cv_histogram",
+    "label": "OpenCV · 外觀直方圖比較",
+    "category": "OpenCV",
+    "description": "比較 HSV 色彩分布；接入追蹤時逐物件比較，否則比較整個畫面。不能代替身分或行為辨識。",
+    "inputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": false,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "frame",
+        "label": "frame",
+        "type": "frame",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "reference",
+        "label": "比較基準",
+        "default": "previous",
+        "type": "select",
+        "options": [
+          "previous",
+          "first"
+        ]
+      },
+      {
+        "key": "similarity_threshold",
+        "label": "外觀改變相似度門檻",
+        "default": 0.7,
+        "type": "number",
+        "min": -1,
+        "max": 1,
+        "step": 0.05
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "觀察最大間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 30,
+        "step": 0.1
+      },
+      {
+        "key": "hue_bins",
+        "label": "色相分箱數",
+        "default": 24,
+        "type": "number",
+        "min": 8,
+        "max": 64,
+        "step": 1
+      },
+      {
+        "key": "saturation_bins",
+        "label": "飽和度分箱數",
+        "default": 16,
+        "type": "number",
+        "min": 8,
+        "max": 64,
+        "step": 1
+      }
+    ]
+  },
+  {
+    "type": "cv_track_motion",
+    "label": "OpenCV · 軌跡位移／速度",
+    "category": "OpenCV",
+    "description": "依追蹤錨點與來源時間量測像素速度、路徑長與畫面對角線比例。失聯中斷計算；未校正相機時不輸出公尺或 km/h。",
+    "inputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tracks",
+        "label": "tracks",
+        "type": "tracks",
+        "required": true,
+        "multiple": false
+      },
+      {
+        "name": "actions",
+        "label": "actions",
+        "type": "actions",
+        "required": true,
+        "multiple": false
+      }
+    ],
+    "params": [
+      {
+        "key": "anchor",
+        "label": "量測錨點",
+        "default": "foot",
+        "type": "select",
+        "options": [
+          "foot",
+          "center"
+        ]
+      },
+      {
+        "key": "moving_threshold",
+        "label": "移動門檻（px/s）",
+        "default": 20.0,
+        "type": "number",
+        "min": 0,
+        "max": 10000,
+        "step": 1
+      },
+      {
+        "key": "window_seconds",
+        "label": "速度平滑時間窗（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 30,
+        "step": 0.1
+      },
+      {
+        "key": "max_gap_seconds",
+        "label": "觀察最大間隔（秒）",
+        "default": 1.0,
+        "type": "number",
+        "min": 0.1,
+        "max": 30,
+        "step": 0.1
+      }
+    ]
+  }
+]

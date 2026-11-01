@@ -293,12 +293,17 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
         homepage_navigation = (request.method == "GET" and request.url.path == "/"
                                and request.headers.get("sec-fetch-mode") == "navigate"
                                and request.headers.get("sec-fetch-dest") == "document")
-        if request.headers.get("sec-fetch-site") == "cross-site" and not origin and not homepage_navigation:
+        comfy_embed = (request.method == "GET" and request.url.path == "/"
+                       and bool(re.fullmatch(r"[0-9a-f]{32}", request.query_params.get("embedded_workflow", ""))))
+        if request.headers.get("sec-fetch-site") == "cross-site" and not origin and not homepage_navigation and not comfy_embed:
             return JSONResponse({"detail": "禁止跨網站存取本機模型服務。"}, status_code=403)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["X-Frame-Options"] = "DENY"
+        if comfy_embed:
+            response.headers["Content-Security-Policy"] = "frame-ancestors 'self' http://127.0.0.1:8188 http://localhost:8188"
+        else:
+            response.headers["X-Frame-Options"] = "DENY"
         return response
 
     @application.get("/api/health")
@@ -610,6 +615,8 @@ def create_app(runtime_dir: Path | None = None, sample_root: Path | None = None,
     register_live_routes(application, manager, load_models, normalize_params, request_weights)
     from .workflow_api import register_workflow_routes
     register_workflow_routes(application, manager, media, load_models, normalize_params, request_weights, runtime)
+    from .comfy_bridge import register_comfy_routes
+    register_comfy_routes(application, media, runtime, load_models, lambda: model_registry.checkpoints(manager))
 
     # Mount last so static frontend cannot swallow /api routes. SPA fallback is
     # unnecessary because the canvas uses in-page tabs instead of path routing.

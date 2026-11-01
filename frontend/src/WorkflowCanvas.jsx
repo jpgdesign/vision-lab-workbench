@@ -1,12 +1,13 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Background, Controls, Handle, MiniMap, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow } from '@xyflow/react';
-import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, ChevronDown, ChevronRight, Cloud, Copy, FilePlus2, FolderOpen, GitBranch, Layers3, LoaderCircle, Maximize, Play, Plus, RefreshCw, Save, Search, Settings2, ShieldCheck, Square, Trash2, Undo2, Upload, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Camera, Check, ChevronDown, ChevronRight, Cloud, Copy, FilePlus2, FolderOpen, GitBranch, Image as ImageIcon, Layers3, LayoutGrid, LoaderCircle, Maximize, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Play, Plus, Redo2, RefreshCw, Save, Search, Settings2, ShieldCheck, Square, Trash2, Undo2, Upload, X } from 'lucide-react';
 import { activeJob, api, optionParts, statusNames, uid } from './api';
 import { checkpointChoices } from './checkpoints';
 import { systemDeviceOptions } from './systemDevices';
 import WorkflowZoneEditor from './WorkflowZoneEditor';
 import LiveCamera from './LiveCamera';
 import { snapshotLiveWorkflow } from './workflowLive';
+import { arrangeWorkflow, duplicateWorkflow, emptyWorkflowHistory, rememberWorkflow, sampleForTemplate, travelWorkflow, workflowKeyboardAction } from './workflowEditor';
 import { EMPTY_GRAPH, WORKFLOW_STORAGE_KEY, parseWorkflowGraph, workflowCatalogGroups, workflowConnectionError, workflowDefaults, workflowDraftNodeStats, workflowErrorText, workflowFromFlow, workflowGraphErrors, workflowParameterValue, workflowPortLabel, workflowRemoteModels, workflowRemoteNode, workflowTemplateProfile, workflowToFlow } from './workflowGraph';
 import './WorkflowCanvas.css';
 
@@ -15,7 +16,7 @@ const safeLink = url => typeof url === 'string' && /^https?:\/\//i.test(url);
 const colorFor = type => portColors[type] || '#a9c9b5';
 const nodeAssets = { pose: 'yolo26n_pose', skeleton_action: 'stgcnpp_ntu120', relation: 'relateanything_convnext_large' };
 const nodeTitle = (spec, node) => spec?.label || node.data.nodeType;
-const emptyDraft = () => ({ name: '未命名應用流程', graph: EMPTY_GRAPH, options: { device: 'auto', frame_stride: 2, max_frames: 300 }, mediaId: '', jobId: '' });
+const emptyDraft = () => ({ name: '未命名應用流程', graph: EMPTY_GRAPH, options: { device: 'auto', frame_stride: 2, max_frames: 300 }, mediaId: '', jobId: '', sourceMode: 'media', templateId: '' });
 function readDraft() {
   try {
     const saved = JSON.parse(localStorage.getItem(WORKFLOW_STORAGE_KEY));
@@ -23,6 +24,7 @@ function readDraft() {
     const defaults = emptyDraft();
     return { name: typeof saved.name === 'string' ? saved.name : defaults.name, graph: parseWorkflowGraph(saved.graph),
       mediaId: typeof saved.mediaId === 'string' ? saved.mediaId : '', jobId: typeof saved.jobId === 'string' ? saved.jobId : '',
+      sourceMode: ['camera', 'vdo'].includes(saved.sourceMode) ? saved.sourceMode : 'media', templateId: typeof saved.templateId === 'string' ? saved.templateId : '',
       runContext: typeof saved.runContext?.jobId === 'string' && typeof saved.runContext?.requestKey === 'string' ? saved.runContext : null,
       options: { ...defaults.options, ...(saved.options && typeof saved.options === 'object' ? saved.options : {}) } };
   }
@@ -44,9 +46,12 @@ const WorkflowNode = memo(function WorkflowNode({ id, data, selected }) {
   const elapsed = stat?.last_ms ?? stat?.elapsed_ms ?? stat?.mean_ms;
   return <article className={`wf-node ${selected ? 'is-selected' : ''} ${status ? `is-${status}` : ''}`}>
     <header><span className="wf-node-icon">{workflowRemoteNode(spec) ? <Cloud size={18}/> : <GitBranch size={18}/>}</span><div><strong>{nodeTitle(spec, { data })}</strong><small>{spec?.category || '未知節點'}</small></div>{workflowRemoteNode(spec) && <span className="wf-cloud-badge">雲端</span>}</header>
-    <p>{spec?.description || '此節點尚未出現在伺服器目錄中，請檢查流程版本。'}</p>
+    <p className="wf-node-description" title={spec?.description}>{spec?.description || '未知節點，請檢查流程版本。'}</p>
     {modelName && <div className="wf-node-model">{modelName}{data.params.checkpoint_id && <span>微調權重</span>}</div>}
     {data.asset && <div className={`wf-node-model ${data.asset.available ? '' : 'wf-error'}`}>{data.asset.available ? '本機權重已就緒' : '本機權重尚未就緒'}</div>}
+    {data.sourceLabel && <div className="wf-node-model"><span>{data.sourceMode === 'camera' ? '即時來源' : '素材'}</span><b title={data.sourceLabel}>{data.sourceLabel}</b></div>}
+    {data.summary && <div className="wf-node-summary" title={data.summary}>{data.summary}</div>}
+    {data.inlineParams?.length > 0 && <div className="wf-node-parameters nodrag nopan nowheel">{data.inlineParams.map(param => <label key={param.key}><span title={param.label}>{param.label}</span>{param.options ? <select aria-label={`${spec?.label} · ${param.label}`} value={data.params[param.key] ?? param.default ?? ''} disabled={data.locked} onChange={event => data.onParam(param.key, event.target.value)}>{param.options.map(option => { const item = optionParts(option); return <option key={item.value} value={item.value}>{item.label}</option>; })}</select> : <input aria-label={`${spec?.label} · ${param.label}`} type="number" value={data.params[param.key] ?? param.default ?? ''} min={param.min} max={param.max} step={param.step || 'any'} disabled={data.locked} onChange={event => data.onParam(param.key, event.target.value === '' ? '' : Number(event.target.value))}/>}</label>)}</div>}
     <div className="wf-ports">{Array.from({ length: Math.max(inputs.length, outputs.length) }, (_, index) => <div className="wf-port-row" key={index}>
       <span className="wf-port-label">{inputs[index] && <><Handle type="target" position={Position.Left} id={inputs[index].name} style={{ top: '50%', background: colorFor(inputs[index].type) }} title={`${workflowPortLabel(inputs[index])} · ${inputs[index].type}`}/><span title={inputs[index].name}>{workflowPortLabel(inputs[index])}</span>{inputs[index].required && <b aria-label="必要輸入">*</b>}</>}</span>
       <span className="wf-port-label output">{outputs[index] && <><span title={outputs[index].name}>{workflowPortLabel(outputs[index])}</span><Handle type="source" position={Position.Right} id={outputs[index].name} style={{ top: '50%', background: colorFor(outputs[index].type) }} title={`${workflowPortLabel(outputs[index])} · ${outputs[index].type}`}/></>}</span>
@@ -107,6 +112,8 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialFlow.current.edges);
   const [name, setName] = useState(initial.current.name);
   const [mediaId, setMediaId] = useState(initial.current.mediaId);
+  const [sourceMode, setSourceMode] = useState(initial.current.sourceMode);
+  const [templateId, setTemplateId] = useState(initial.current.templateId);
   const [options, setOptions] = useState(initial.current.options);
   const [jobId, setJobId] = useState(initial.current.jobId);
   const [runContext, setRunContext] = useState(initial.current.runContext || null);
@@ -115,7 +122,13 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
   const [selectedId, setSelectedId] = useState(''), [panel, setPanel] = useState('templates'), [query, setQuery] = useState('');
   const [category, setCategory] = useState(''), [templateQuery, setTemplateQuery] = useState('');
   const [busy, setBusy] = useState(''), [validation, setValidation] = useState(null), [validationKey, setValidationKey] = useState('');
-  const [editorErrors, setEditorErrors] = useState({}), [undo, setUndo] = useState(null);
+  const [editorErrors, setEditorErrors] = useState({});
+  const [history, setHistory] = useState(emptyWorkflowHistory);
+  const [libraryOpen, setLibraryOpen] = useState(true), [inspectorOpen, setInspectorOpen] = useState(false);
+  const [libraryWidth, setLibraryWidth] = useState(270), [inspectorWidth, setInspectorWidth] = useState(310);
+  const [quickAdd, setQuickAdd] = useState(null), [quickQuery, setQuickQuery] = useState('');
+  const [panelResize, setPanelResize] = useState(null);
+  const [runSettings, setRunSettings] = useState(false);
   const [integration, setIntegration] = useState(null), [keyFile, setKeyFile] = useState(''), [integrationError, setIntegrationError] = useState('');
   const [liveWorkflow, setLiveWorkflow] = useState(null);
   const latestDraft = useRef(null);
@@ -123,13 +136,20 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
   const { fitView, screenToFlowPosition } = useReactFlow();
   const job = jobs.find(item => item.id === jobId), active = activeJob(job);
   const selected = nodes.find(node => node.id === selectedId), selectedSpec = catalog.find(spec => spec.type === selected?.data.nodeType);
-  const selectedMedia = media.find(item => item.id === mediaId);
+  const availableMedia = [...media, ...templates.map(item => sampleForTemplate(item, media)?.media).filter(item => item && !media.some(existing => existing.id === item.id))].filter((item, index, all) => all.findIndex(value => value.id === item.id) === index);
+  const selectedMedia = availableMedia.find(item => item.id === mediaId);
+  const selectedTemplate = templates.find(item => item.id === templateId);
+  const sample = sampleForTemplate(selectedTemplate, media);
   const graph = useMemo(() => workflowFromFlow(nodes, edges), [nodes, edges]);
   const requestKey = JSON.stringify({ graph, media_id: mediaId, options });
   const currentValidation = validationKey === requestKey ? validation : null;
   const stats = workflowDraftNodeStats(job, runContext, requestKey);
   const cloudNodes = nodes.filter(node => workflowRemoteNode(catalog.find(spec => spec.type === node.data.nodeType)));
-  const displayNodes = useMemo(() => nodes.map(node => ({ ...node, data: { ...node.data, spec: catalog.find(spec => spec.type === node.data.nodeType), stat: stats[node.id], active, jobStatus: job?.status, asset: assets.find(asset => asset.model_id === nodeAssets[node.data.nodeType]), modelName: models.find(model => model.id === node.data.params.model_id)?.name } })), [nodes, catalog, stats, active, models, assets, job?.status]);
+  const displayNodes = nodes.map(node => {
+    const spec = catalog.find(spec => spec.type === node.data.nodeType);
+    const inlineParams = (spec?.params || []).filter(param => param.key !== 'checkpoint_id' && (param.type === 'number' || param.type === 'select') && param.key !== 'model_id' || param.key === 'model_id' && !workflowRemoteNode(spec)).slice(0, 2).map(param => param.key === 'model_id' ? { ...param, options: models.filter(model => model.inference_supported && (!param.model_task || (param.model_task === 'detection' ? ['detection', 'segmentation'].includes(model.task) : model.task === param.model_task))).map(model => ({ value: model.id, label: model.name })) } : param);
+    return { ...node, data: { ...node.data, spec, stat: stats[node.id], active, locked: active || Boolean(busy), jobStatus: job?.status, asset: assets.find(asset => asset.model_id === nodeAssets[node.data.nodeType]), modelName: models.find(model => model.id === node.data.params.model_id)?.name, inlineParams, onParam: (key, value) => updateParam(key, value, node.id), sourceMode, sourceLabel: node.data.nodeType === 'source' ? sourceMode === 'media' ? selectedMedia?.name || '尚未選擇素材' : sourceMode === 'vdo' ? 'VDO.Ninja 手機串流' : 'USB／虛擬攝影機' : '' } };
+  });
   const catalogGroups = useMemo(() => workflowCatalogGroups(catalog), [catalog]);
   const filteredGroups = useMemo(() => workflowCatalogGroups(catalog, query, category), [catalog, query, category]);
   const filteredCount = filteredGroups.reduce((total, group) => total + group.nodes.length, 0);
@@ -146,10 +166,10 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
     setLoading(false);
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
-  latestDraft.current = { name, graph, mediaId, options, jobId, runContext };
-  useEffect(() => { const timer = setTimeout(() => persistDraft(latestDraft.current), 300); return () => clearTimeout(timer); }, [name, graph, mediaId, options, jobId, runContext]);
+  latestDraft.current = { name, graph, mediaId, options, jobId, runContext, sourceMode, templateId };
+  useEffect(() => { const timer = setTimeout(() => persistDraft(latestDraft.current), 300); return () => clearTimeout(timer); }, [name, graph, mediaId, options, jobId, runContext, sourceMode, templateId]);
   useEffect(() => { const flush = () => persistDraft(latestDraft.current); window.addEventListener('pagehide', flush); return () => { window.removeEventListener('pagehide', flush); flush(); }; }, []);
-  useEffect(() => { if (!mediaId && media.length) setMediaId(media[0].id); }, [media, mediaId]);
+  useEffect(() => { if (!mediaId && !templateId && media.length) setMediaId(media[0].id); }, [media, mediaId, templateId]);
   useEffect(() => { if (nodes.length) requestAnimationFrame(() => fitView({ padding: 0.2, duration: 0 })); }, []);
   useEffect(() => {
     const element = container.current;
@@ -166,47 +186,125 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
     return () => { observer.disconnect(); cancelAnimationFrame(scheduled); };
   }, [fitView, liveWorkflow]);
 
-  function loadGraph(value, title, remember = true) {
+  const editSnapshot = () => ({ name, graph, mediaId, sourceMode, templateId, options });
+  function remember(group = '') { setHistory(previous => rememberWorkflow(previous, editSnapshot(), group)); }
+  function restore(snapshot) {
+    const flow = workflowToFlow(snapshot.graph);
+    setNodes(flow.nodes); setEdges(flow.edges); setName(snapshot.name); setMediaId(snapshot.mediaId || '');
+    setSourceMode(snapshot.sourceMode || 'media'); setTemplateId(snapshot.templateId || '');
+    if (snapshot.options) setOptions(snapshot.options);
+    setSelectedId(''); setEditorErrors({}); setValidation(null); setJobId('');
+  }
+  function travel(direction) {
+    const next = travelWorkflow(history, editSnapshot(), direction);
+    if (next) { setHistory(next.history); restore(next.snapshot); }
+  }
+  function loadGraph(value, title, record = true) {
     try {
       const parsed = parseWorkflowGraph(value);
-      if (remember) setUndo({ name, graph });
+      if (record) remember();
       const flow = workflowToFlow(parsed); setNodes(flow.nodes); setEdges(flow.edges); setName(title || '匯入的應用流程'); setSelectedId(''); setEditorErrors({}); setValidation(null); setJobId('');
+      setTemplateId(''); setQuickAdd(null);
       setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 80);
     } catch (error) { notify(error.message, true); }
   }
+  function loadTemplate(template) {
+    loadGraph(arrangeWorkflow(template.graph, catalog), template.name);
+    setTemplateId(template.id); setSourceMode('media');
+    const example = sampleForTemplate(template, media);
+    setMediaId(example?.available ? example.media_id : '');
+    if (template.recommended_options) setOptions(previous => ({ ...previous, ...template.recommended_options }));
+    setInspectorOpen(false);
+    notify(example?.available ? `已載入流程與「${example.title}」範例。` : '流程已載入；請選擇自己的素材，或切換即時攝影機。');
+  }
   function addNode(type, position) {
-    if (active || nodes.length >= 48) return;
+    if (active || busy || nodes.length >= 48) return;
     const spec = catalog.find(item => item.type === type); if (!spec) return;
+    remember();
     const center = container.current?.getBoundingClientRect();
     const point = position || (center ? screenToFlowPosition({ x: center.left + center.width / 2 - 100, y: center.top + center.height / 2 - 70 }) : { x: 60 + nodes.length * 30, y: 60 + nodes.length * 30 });
     const id = uid();
     setNodes(previous => [...previous.map(node => ({ ...node, selected: false })), { id, type: 'workflow', position: point, selected: true, data: { nodeType: type, params: workflowDefaults(spec) } }]);
-    setSelectedId(id); setValidation(null);
+    setSelectedId(id); setInspectorOpen(true); setQuickAdd(null); setValidation(null);
   }
-  function removeNode(id) { setNodes(previous => previous.filter(node => node.id !== id)); setEdges(previous => previous.filter(edge => edge.source !== id && edge.target !== id)); setSelectedId(''); setEditorErrors(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(`${id}:`)))); }
-  function updateParam(key, value) {
-    const hasCheckpoint = selectedSpec?.params?.some(param => param.key === 'checkpoint_id');
-    const extras = key === 'model_id' && hasCheckpoint ? { checkpoint_id: '', ...(selectedSpec.params.some(param => param.key === 'use_training_classes') ? { use_training_classes: false } : {}) } : {};
-    if (key === 'checkpoint_id' && selected?.data.params.model_id === 'grounding_dino_base') {
+  function removeSelection(ids = nodes.filter(node => node.selected).map(node => node.id)) {
+    if (!ids.length && selectedId) ids = [selectedId];
+    if (!ids.length && !edges.some(edge => edge.selected)) return;
+    remember();
+    setNodes(previous => previous.filter(node => !ids.includes(node.id)));
+    setEdges(previous => previous.filter(edge => !edge.selected && !ids.includes(edge.source) && !ids.includes(edge.target)));
+    setSelectedId(''); setEditorErrors(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => !ids.some(id => key.startsWith(`${id}:`)))));
+  }
+  function duplicateSelection() {
+    const ids = nodes.filter(node => node.selected).map(node => node.id);
+    if (!ids.length && selectedId) ids.push(selectedId);
+    if (!ids.length) return;
+    try {
+      const copied = duplicateWorkflow(graph, ids, uid); remember();
+      const flow = workflowToFlow(copied.graph); setNodes(flow.nodes.map(node => ({ ...node, selected: copied.selected.includes(node.id) }))); setEdges(flow.edges);
+      setSelectedId(copied.selected[0]); setInspectorOpen(true);
+    } catch (error) { notify(error.message, true); }
+  }
+  function arrange() {
+    remember(); const flow = workflowToFlow(arrangeWorkflow(graph, catalog)); setNodes(flow.nodes); setEdges(flow.edges);
+    setTimeout(() => fitView({ padding: 0.2, duration: 250 }), 50);
+  }
+  function updateParam(key, value, nodeId = selectedId) {
+    const target = nodes.find(node => node.id === nodeId), spec = catalog.find(item => item.type === target?.data.nodeType);
+    const hasCheckpoint = spec?.params?.some(param => param.key === 'checkpoint_id');
+    const extras = key === 'model_id' && hasCheckpoint ? { checkpoint_id: '', ...(spec.params.some(param => param.key === 'use_training_classes') ? { use_training_classes: false } : {}) } : {};
+    if (key === 'checkpoint_id' && target?.data.params.model_id === 'grounding_dino_base') {
       const chosen = checkpointChoices('grounding_dino_base', checkpoints, jobs).find(item => item.id === value);
       extras.use_training_classes = chosen?.training?.caption_mode === 'chunked';
     }
-    setNodes(previous => previous.map(node => node.id === selectedId ? { ...node, data: { ...node.data, params: { ...node.data.params, [key]: value, ...extras } } } : node));
+    remember(`param:${nodeId}:${key}`);
+    setNodes(previous => previous.map(node => node.id === nodeId ? { ...node, data: { ...node.data, params: { ...node.data.params, [key]: value, ...extras } } } : node));
   }
   function connect(connection) {
     const error = workflowConnectionError(connection, graph, catalog);
     if (error) return notify(error, true);
+    remember();
     setEdges(previous => [...previous, { ...connection, id: uid(), type: 'smoothstep' }]);
   }
+  function openQuickAdd(event) {
+    if (active || busy) return;
+    const rect = container.current?.getBoundingClientRect(); if (!rect) return;
+    event?.preventDefault?.();
+    const x = event?.clientX ?? rect.left + rect.width / 2, y = event?.clientY ?? rect.top + 70;
+    setQuickQuery(''); setQuickAdd({ x: Math.max(8, Math.min(rect.width - 300, x - rect.left)), y: Math.max(8, Math.min(rect.height - 320, y - rect.top)), position: screenToFlowPosition({ x, y }) });
+  }
+  function startPanelResize(event, side) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanelResize({ side, x: event.clientX, width: side === 'left' ? libraryWidth : inspectorWidth });
+  }
+  function resizePanel(event) {
+    if (!panelResize) return;
+    const width = panelResize.width + (event.clientX - panelResize.x) * (panelResize.side === 'left' ? 1 : -1);
+    (panelResize.side === 'left' ? setLibraryWidth : setInspectorWidth)(Math.max(230, Math.min(430, width)));
+  }
+  useEffect(() => {
+    function keyboard(event) {
+      if (active || busy || liveWorkflow || quickAdd) return;
+      const action = workflowKeyboardAction(event); if (!action) return;
+      event.preventDefault();
+      if (action === 'undo' || action === 'redo') travel(action);
+      else if (action === 'duplicate') duplicateSelection();
+      else if (action === 'delete') removeSelection();
+      else if (action === 'fit') fitView({ padding: .2, duration: 200 });
+      else if (action === 'add') openQuickAdd();
+    }
+    window.addEventListener('keydown', keyboard);
+    return () => window.removeEventListener('keydown', keyboard);
+  });
   function errorsBeforeRun() {
-    return [...workflowGraphErrors(graph, catalog), ...Object.values(editorErrors), ...(!selectedMedia ? ['請選擇存在的輸入圖片或影片。'] : []), ...(!Number.isInteger(options.frame_stride) || options.frame_stride < 1 ? ['每幾幀取樣必須是大於 0 的整數。'] : []), ...(!Number.isInteger(options.max_frames) || options.max_frames < 1 ? ['最多幀數必須是大於 0 的整數。'] : [])];
+    return [...workflowGraphErrors(graph, catalog), ...Object.values(editorErrors), ...(sourceMode === 'media' && !selectedMedia ? ['請選擇存在的輸入圖片或影片。'] : []), ...(!Number.isInteger(options.frame_stride) || options.frame_stride < 1 ? ['每幾幀取樣必須是大於 0 的整數。'] : []), ...(!Number.isInteger(options.max_frames) || options.max_frames < 1 ? ['最多幀數必須是大於 0 的整數。'] : [])];
   }
   async function validateAndRun(run) {
     const errors = errorsBeforeRun(); setValidationKey(requestKey);
     if (errors.length) { setValidation({ valid: false, errors, warnings: [] }); return; }
     setBusy(run ? 'run' : 'validate');
     try {
-      const payload = { graph, media_id: mediaId, options };
+      const payload = { graph, ...(sourceMode === 'media' ? { media_id: mediaId } : {}), options };
       const checked = await api('/workflows/validate', { method: 'POST', body: payload }); setValidation(checked); setValidationKey(requestKey);
       if (checked.valid && run) { const started = await submitWorkflow(payload); setRunContext({ jobId: started.id, requestKey }); setJobId(started.id); }
     } catch (error) { setValidation({ valid: false, errors: [error.message], warnings: [] }); }
@@ -243,14 +341,40 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
     if (errors.length) { setValidation({ valid: false, errors, warnings: [] }); setValidationKey(requestKey); return; }
     setLiveWorkflow(snapshotLiveWorkflow({ graph, name, options, labels: graph.nodes.map(node => catalog.find(spec => spec.type === node.type)?.label || node.type) }));
   }
-  if (liveWorkflow) return <section className="wf-live-page"><div className="wf-live-navigation"><button className="button secondary small" onClick={() => setLiveWorkflow(null)}><Undo2 size={14}/>停止並返回流程畫布</button><span>流程與參數已固定，返回畫布會停止攝影機及即時任務。</span></div><LiveCamera models={models} jobs={jobs} checkpoints={checkpoints} system={system} confirmLicense={confirmLicense} workflow={liveWorkflow}/><div className="wf-attribution"><span>本機模型在本機執行；雲端節點會傳送影像。</span><a href="https://github.com/Maelic/RelateAnything" target="_blank" rel="noreferrer">Based on RelateAnything by Maëlic Neau</a></div></section>;
+  if (liveWorkflow) return <section className="wf-live-page"><div className="wf-live-navigation"><button className="button secondary small" onClick={() => setLiveWorkflow(null)}><Undo2 size={14}/>停止並返回流程畫布</button><span>流程與參數已固定，返回畫布會停止攝影機及即時任務。</span></div><LiveCamera models={models} jobs={jobs} checkpoints={checkpoints} system={system} confirmLicense={confirmLicense} workflow={liveWorkflow} initialSourceMode={sourceMode === 'vdo' ? 'vdo' : 'camera'}/><div className="wf-attribution"><span>本機模型在本機執行；雲端節點會傳送影像。</span><a href="https://github.com/Maelic/RelateAnything" target="_blank" rel="noreferrer">Based on RelateAnything by Maëlic Neau</a></div></section>;
   return <main className="wf-page">
-    <div className="wf-commandbar"><div className="wf-title"><span className="eyebrow">BUILD AN APPLICATION</span><h1>應用工作檯<span className="accent-dot">.</span></h1></div><label className="wf-name"><span className="sr-only">流程名稱</span><input value={name} disabled={locked} onChange={event => setName(event.target.value)} placeholder="為應用流程命名"/></label><div className="wf-command-actions"><button className="button secondary small" disabled={locked} onClick={save}><Save size={14}/>{busy === 'save' ? '儲存中' : '儲存'}</button><select aria-label="開啟已儲存的流程" value="" disabled={locked} onChange={event => { const item = saved.find(value => value.id === event.target.value); if (item) loadGraph(item.graph, item.name); }}><option value="">開啟流程 ({saved.length})</option>{saved.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="icon-button" title="新增空白流程" aria-label="新增空白流程" disabled={locked} onClick={() => loadGraph(EMPTY_GRAPH, '未命名應用流程')}><FilePlus2 size={16}/></button><button className="icon-button" title="還原上一次載入前的流程" aria-label="還原上一次載入前的流程" disabled={locked || !undo} onClick={() => { loadGraph(undo.graph, undo.name, false); setUndo(null); }}><Undo2 size={16}/></button><button className="icon-button" title="匯入流程 JSON" aria-label="匯入流程 JSON" disabled={locked} onClick={() => importFile.current?.click()}><ArrowUpFromLine size={16}/></button><button className="icon-button" title="匯出流程 JSON" aria-label="匯出流程 JSON" disabled={Object.keys(editorErrors).length > 0} onClick={() => { try { exportJson(name, { name, graph: parseWorkflowGraph(graph) }); } catch (error) { notify(error.message, true); } }}><ArrowDownToLine size={16}/></button></div></div>
-    <div className="wf-inputbar"><label className="field wf-source"><span>共用輸入素材</span><select value={mediaId} disabled={locked} onChange={event => setMediaId(event.target.value)}><option value="">選擇圖片或影片</option>{media.map(item => <option key={item.id} value={item.id}>{item.kind === 'video' ? '影片' : '圖片'} · {item.name}</option>)}</select></label><button className="button secondary small" disabled={locked} onClick={() => mediaUpload.current?.click()}><Upload size={14}/>上傳</button><label className="field"><span>運算裝置</span><select value={options.device} disabled={locked} onChange={event => setOptions(previous => ({ ...previous, device: event.target.value }))}>{systemDeviceOptions(system).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label className="field wf-number"><span>每幾幀取樣</span><input type="number" min="1" max="60" value={options.frame_stride} disabled={locked} onChange={event => setOptions(previous => ({ ...previous, frame_stride: Number(event.target.value) }))}/></label><label className="field wf-number"><span>最多幀數</span><input type="number" min="1" max="3000" value={options.max_frames} disabled={locked} onChange={event => setOptions(previous => ({ ...previous, max_frames: Number(event.target.value) }))}/></label><div className="wf-run-actions"><button className="button secondary" disabled={locked || !catalog.length} onClick={openLiveWorkflow}><Camera size={14}/>即時攝影機</button><button className="button secondary" disabled={locked || !catalog.length} onClick={() => validateAndRun(false)}>{busy === 'validate' ? <LoaderCircle size={14} className="spin"/> : <ShieldCheck size={15}/>}檢查流程</button><button className="button primary" disabled={locked || !catalog.length} onClick={() => validateAndRun(true)}>{busy === 'run' ? <LoaderCircle size={14} className="spin"/> : <Play size={14} fill="currentColor"/>}執行流程</button></div></div>
+    <div className="wf-commandbar">
+      <div className="wf-title"><GitBranch size={21}/><h1>應用工作檯</h1></div>
+      <div className="wf-engine-tabs" aria-label="工作流引擎"><button className="active">視覺應用</button><a href="http://127.0.0.1:8188/" target="_blank" rel="noreferrer">開啟 ComfyUI ↗</a></div>
+      <label className="wf-name"><span className="sr-only">流程名稱</span><input value={name} disabled={locked} onChange={event => setName(event.target.value)} placeholder="為應用流程命名"/></label>
+      <div className="wf-command-actions">
+        <button className="button secondary small" disabled={locked} onClick={save}><Save size={14}/>{busy === 'save' ? '儲存中' : '儲存'}</button>
+        <select aria-label="開啟已儲存的流程" value="" disabled={locked} onChange={event => { const item = saved.find(value => value.id === event.target.value); if (item) loadGraph(item.graph, item.name); }}><option value="">開啟流程 ({saved.length})</option>{saved.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+        <button className="icon-button" title="新增空白流程" aria-label="新增空白流程" disabled={locked} onClick={() => loadGraph(EMPTY_GRAPH, '未命名應用流程')}><FilePlus2 size={16}/></button>
+        <button className="icon-button" title="復原 Ctrl+Z" aria-label="復原" disabled={locked || !history.past.length} onClick={() => travel('undo')}><Undo2 size={16}/></button>
+        <button className="icon-button" title="重做 Ctrl+Shift+Z" aria-label="重做" disabled={locked || !history.future.length} onClick={() => travel('redo')}><Redo2 size={16}/></button>
+        <button className="icon-button" title="匯入流程 JSON" aria-label="匯入流程 JSON" disabled={locked} onClick={() => importFile.current?.click()}><ArrowUpFromLine size={16}/></button>
+        <button className="icon-button" title="匯出流程 JSON" aria-label="匯出流程 JSON" disabled={Object.keys(editorErrors).length > 0} onClick={() => { try { exportJson(name, { name, graph: parseWorkflowGraph(graph) }); } catch (error) { notify(error.message, true); } }}><ArrowDownToLine size={16}/></button>
+      </div>
+    </div>
+    <div className="wf-inputbar">
+      <div className="wf-source-tabs" aria-label="選擇流程輸入來源">{[{id:'media',label:'圖片／影片',icon:<ImageIcon size={14}/>},{id:'camera',label:'攝影機',icon:<Camera size={14}/>},{id:'vdo',label:'VDO.Ninja',icon:<Camera size={14}/>}].map(item => <button key={item.id} className={sourceMode === item.id ? 'active' : ''} aria-pressed={sourceMode === item.id} disabled={locked} onClick={() => { setSourceMode(item.id); setValidation(null); }}>{item.icon}{item.label}</button>)}</div>
+      {sourceMode === 'media' ? <><label className="field wf-source"><span className="sr-only">輸入圖片或影片</span><select aria-label="輸入圖片或影片" value={mediaId} disabled={locked} onChange={event => setMediaId(event.target.value)}><option value="">選擇圖片或影片</option>{availableMedia.map(item => <option key={item.id} value={item.id}>{item.kind === 'video' ? '影片' : '圖片'} · {item.name}</option>)}</select></label><button className="button secondary small" disabled={locked} onClick={() => mediaUpload.current?.click()}><Upload size={14}/>上傳</button></> : <p className="wf-source-explanation">{sourceMode === 'vdo' ? '手機分享 VDO.Ninja 觀看連結，接入整張工作流。' : '選擇 USB、內建或虛擬攝影機，接入整張工作流。'}</p>}
+      <button className={`button ghost small ${runSettings ? 'active' : ''}`} aria-expanded={runSettings} onClick={() => setRunSettings(value => !value)}><Settings2 size={14}/>執行設定</button>
+      <div className="wf-run-actions"><button className="button secondary" disabled={locked || !catalog.length} onClick={() => validateAndRun(false)}>{busy === 'validate' ? <LoaderCircle size={14} className="spin"/> : <ShieldCheck size={15}/>}檢查</button><button className="button primary" disabled={locked || !catalog.length} onClick={() => sourceMode === 'media' ? validateAndRun(true) : openLiveWorkflow()}>{busy === 'run' ? <LoaderCircle size={14} className="spin"/> : sourceMode === 'media' ? <Play size={14} fill="currentColor"/> : <Camera size={15}/>} {sourceMode === 'media' ? '執行流程' : '開啟即時工作流'}</button></div>
+    </div>
+    {runSettings && <div className="wf-run-settings"><label className="field"><span>運算裝置</span><select value={options.device} disabled={locked} onChange={event => setOptions(previous => ({ ...previous, device: event.target.value }))}>{systemDeviceOptions(system).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{sourceMode === 'media' ? <><label className="field wf-number"><span>每幾幀取樣</span><input type="number" min="1" max="60" value={options.frame_stride} disabled={locked} onChange={event => setOptions(previous => ({ ...previous, frame_stride: Number(event.target.value) }))}/></label><label className="field wf-number"><span>最多幀數</span><input type="number" min="1" max="3000" value={options.max_frames} disabled={locked} onChange={event => setOptions(previous => ({ ...previous, max_frames: Number(event.target.value) }))}/></label></> : <p>擷取 FPS 與執行時間會在即時頁面設定。此處不會自動開啟攝影機。</p>}</div>}
+    {selectedTemplate && <div className={`wf-sample-strip ${sample?.available ? '' : 'is-missing'}`}>
+      {sample?.available && sample.url && <div className="wf-sample-preview">{sample.kind === 'image' ? <img src={sample.url} alt={sample.title}/> : <video src={sample.url} muted preload="metadata"/>}</div>}
+      <div><strong>{selectedTemplate.name}</strong><p>{sample?.expected || selectedTemplate.description}</p><small>{sample?.available ? `範例：${sample.title}` : sample?.notes || '此流程需要你提供對應場景素材，也可直接使用攝影機。'}</small></div>
+      {sample?.available && <button className="button secondary small" disabled={locked} onClick={() => { setSourceMode('media'); setMediaId(sample.media_id); }}>{mediaId === sample.media_id && sourceMode === 'media' ? <Check size={13}/> : <ImageIcon size={13}/>}使用範例</button>}
+      {safeLink(sample?.source_url) && <a className="wf-sample-origin" href={sample.source_url} target="_blank" rel="noreferrer" title={sample.license}>素材來源 ↗</a>}
+      <button className="icon-button" aria-label="關閉流程說明" onClick={() => setTemplateId('')}><X size={14}/></button>
+    </div>}
     {cloudNodes.length > 0 && <div className="wf-cloud-notice"><Cloud size={14}/><span>此流程包含 {cloudNodes.length} 個雲端節點；執行時會將取樣影像送至外部 API。</span><button onClick={() => setPanel('integrations')}>連接設定 <ChevronRight size={13}/></button></div>}
     {loadError && <div className="wf-error-banner" role="alert"><span>無法讀取流程服務：{loadError}</span><button className="button ghost small" onClick={refresh}><RefreshCw size={14}/>重試</button></div>}
-    <div className="wf-workspace">
-      <aside className="wf-library"><div className="wf-library-tabs"><button className={panel === 'templates' ? 'active' : ''} onClick={() => setPanel('templates')}>模板</button><button className={panel === 'nodes' ? 'active' : ''} onClick={() => setPanel('nodes')}>節點</button><button className={panel === 'integrations' ? 'active' : ''} onClick={() => setPanel('integrations')}>連接</button></div><div className="wf-library-content">
+    <div className={`wf-workspace ${libraryOpen ? '' : 'library-closed'} ${inspectorOpen ? '' : 'inspector-closed'}`} style={{ '--wf-library-width': `${libraryWidth}px`, '--wf-inspector-width': `${inspectorWidth}px` }}>
+      {libraryOpen && <aside className="wf-library"><div className="wf-library-tabs"><button className={panel === 'templates' ? 'active' : ''} onClick={() => setPanel('templates')}>模板</button><button className={panel === 'nodes' ? 'active' : ''} onClick={() => setPanel('nodes')}>節點</button><button className={panel === 'integrations' ? 'active' : ''} onClick={() => setPanel('integrations')}>連接</button></div><div className="wf-library-content">
         {loading ? <p className="wf-hint"><LoaderCircle size={15} className="spin"/>讀取節點目錄</p> : panel === 'nodes' ? <>
           <label className="search-input"><Search size={14}/><input aria-label="搜尋流程節點" placeholder="名稱、方法或參數…" value={query} onChange={event => setQuery(event.target.value)}/></label>
           <label className="wf-category-filter"><span>節點分類</span><select aria-label="篩選節點分類" value={category} onChange={event => setCategory(event.target.value)}><option value="">全部分類 · {catalog.length}</option>{catalogGroups.map(group => <option key={group.category} value={group.category}>{group.category} · {group.nodes.length}</option>)}</select></label>
@@ -261,17 +385,33 @@ function WorkflowCanvasInner({ models, media, jobs, checkpoints, system, notify,
           <p className="wf-hint">從可編輯模板開始，串接 OpenCV、模型與規則。搜尋 OpenCV 可找到不需模型權重的影像處理示範。</p>
           <label className="search-input"><Search size={14}/><input aria-label="搜尋應用模板" placeholder="搜尋模板…" value={templateQuery} onChange={event => setTemplateQuery(event.target.value)}/></label>
           <p className="wf-library-count" role="status">{filteredTemplates.length} 個模板</p>
-          {filteredTemplates.map(template => <article className="wf-template" key={template.id}><span className="wf-template-icon"><Layers3 size={18}/></span><h3>{template.name}</h3><span className="wf-template-profile">{workflowTemplateProfile(template).label}</span><p>{template.description}</p><small>{template.graph?.nodes?.length || 0} 個節點</small><button className="button secondary small full" disabled={locked} onClick={() => { loadGraph(template.graph, template.name); setPanel('nodes'); }}>使用這個模板 <ChevronRight size={13}/></button>{template.sources?.length > 0 && <details><summary>方法與來源</summary>{template.sources.filter(source => safeLink(source.url)).map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</details>}</article>)}
+          {filteredTemplates.map(template => { const example = sampleForTemplate(template, media); return <article className="wf-template" key={template.id}>
+            {example?.available && example.url && <div className="wf-template-preview">{example.kind === 'image' ? <img src={example.url} alt={example.title} loading="lazy"/> : <video src={example.url} muted preload="metadata"/>}<span>{example.kind === 'video' ? '影片範例' : '圖片範例'}</span></div>}
+            <h3>{template.name}</h3><span className="wf-template-profile">{workflowTemplateProfile(template).label}</span><p>{example?.expected || template.description}</p>
+            <small>{template.graph?.nodes?.length || 0} 個節點 · {example?.available ? example.title : '需提供場景素材／攝影機'}</small>
+            <button className="button secondary small full" disabled={locked} onClick={() => loadTemplate(template)}>{example?.available ? '載入流程與範例' : '載入流程'} <ChevronRight size={13}/></button>
+            {(template.sources?.length > 0 || example) && <details><summary>素材與方法來源</summary>{example && <p>{example.notes || example.license}{safeLink(example.source_url) && <a href={example.source_url} target="_blank" rel="noreferrer">範例素材來源 ↗</a>}</p>}{template.sources?.filter(source => safeLink(source.url)).map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</details>}
+          </article>; })}
           {!filteredTemplates.length && <p className="wf-hint">{templates.length ? '沒有符合的模板，請更換搜尋文字。' : '尚無可用模板，可從「節點」建立流程。'}</p>}
         </> : <section className="wf-integration"><span className="wf-cloud-badge"><Cloud size={13}/>雲端 API</span><h3>雲端視覺判讀</h3><p>金鑰只由本機後端讀取。輸入已儲存 API 金鑰的檔案路徑；流程 JSON 不會包含金鑰或路徑。</p><div className={`wf-integration-state ${integration?.available ? 'ready' : ''}`}><span>{integration?.available ? '連接已就緒' : integration?.configured ? '已設定，請確認服務狀態' : '尚未設定'}</span>{integration?.model_id && <small>{integration.model_id}</small>}{integration?.base_url && <small>{integration.base_url}</small>}</div>{workflowRemoteModels(integration).length > 0 && <details className="wf-integration-models"><summary>可用 API 模型 · {workflowRemoteModels(integration).length}</summary><ul>{workflowRemoteModels(integration).map(id => <li key={id}>{id}</li>)}</ul></details>}<label className="field"><span>本機金鑰檔案路徑</span><input type="text" value={keyFile} autoComplete="off" disabled={locked} placeholder="C:\\private\\munolith-key.txt" onChange={event => setKeyFile(event.target.value)}/></label><button className="button secondary full" disabled={locked || !keyFile.trim()} onClick={configureIntegration}>設定連接</button>{(integrationError || integration?.error) && <p className="wf-error" role="alert">{integrationError || integration.error}</p>}<p className="wf-hint">雲端節點會傳送影像至此服務；其他節點使用本機模型與檔案。</p></section>}
-      </div></aside>
-      <section className="wf-center"><div className="wf-canvas-toolbar"><span><GitBranch size={14}/>{nodes.length} 個節點 · {edges.length} 條連線</span><span>拖曳節點 · 連接同類型接點</span><button className="icon-button" onClick={() => fitView({ padding: 0.2, duration: 250 })} title="顯示完整流程" aria-label="顯示完整流程"><Maximize size={15}/></button></div><div className="wf-flow" ref={container} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }} onDrop={event => { event.preventDefault(); const type = event.dataTransfer.getData('application/vision-workflow-node'); addNode(type, screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
-        <ReactFlow nodes={displayNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={active ? undefined : onNodesChange} onEdgesChange={active ? undefined : onEdgesChange} onConnect={connect} nodesDraggable={!locked} nodesConnectable={!locked} edgesReconnectable={false} deleteKeyCode={locked ? null : ['Backspace', 'Delete']} onNodeClick={(_, node) => setSelectedId(node.id)} onPaneClick={() => setSelectedId('')} onNodesDelete={deleted => { if (deleted.some(node => node.id === selectedId)) setSelectedId(''); setEditorErrors(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => !deleted.some(node => key.startsWith(`${node.id}:`))))); }} defaultEdgeOptions={{ type: 'smoothstep', style: { stroke: '#81b99a', strokeWidth: 2 } }} minZoom={0.2} maxZoom={1.7} fitView colorMode="dark"><Background color="#2b3c31" gap={22} size={1}/><Controls showInteractive={false}/><MiniMap nodeColor={node => workflowRemoteNode(node.data.spec) ? '#bbaa88' : '#7ba98b'} maskColor="#101613aa" pannable zoomable/></ReactFlow>
-        {!nodes.length && <div className="wf-empty-canvas"><span><GitBranch size={32} strokeWidth={1.2}/></span><h2>把影像，接成你的應用。</h2><p>選一個模板，或新增節點再連接輸入與輸出。<br/>偵測、追蹤、區域與事件都在同一張畫布。</p><button className="button secondary" onClick={() => setPanel('templates')}>瀏覽應用模板 <ChevronRight size={15}/></button></div>}
+      </div><div className="wf-resize-handle is-left" role="separator" tabIndex={0} aria-label="調整素材庫寬度" aria-orientation="vertical" aria-valuenow={libraryWidth} onPointerDown={event => startPanelResize(event, 'left')} onPointerMove={resizePanel} onPointerUp={() => setPanelResize(null)} onPointerCancel={() => setPanelResize(null)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); setLibraryWidth(value => Math.max(230, Math.min(430, value + (event.key === 'ArrowRight' ? 20 : -20)))); } }}/></aside>}
+      <section className="wf-center"><div className="wf-canvas-toolbar">
+        <button className="icon-button" title={libraryOpen ? '收合節點與模板' : '展開節點與模板'} aria-label={libraryOpen ? '收合節點與模板' : '展開節點與模板'} onClick={() => setLibraryOpen(value => !value)}>{libraryOpen ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}</button>
+        <button className="button ghost small" disabled={locked} onClick={() => openQuickAdd()}><Plus size={14}/>新增節點</button>
+        <span className="wf-canvas-count">{nodes.length} 節點 · {edges.length} 連線</span>
+        <div className="wf-canvas-actions"><button className="icon-button" disabled={locked || !selectedId} onClick={duplicateSelection} title="複製選取 Ctrl+D" aria-label="複製選取"><Copy size={15}/></button><button className="icon-button" disabled={locked || !selectedId && !edges.some(edge => edge.selected)} onClick={() => removeSelection()} title="刪除選取 Delete" aria-label="刪除選取"><Trash2 size={15}/></button><button className="button ghost small" disabled={locked || !nodes.length} onClick={arrange} title="依連線方向整理節點"><LayoutGrid size={14}/>整理</button><button className="icon-button" onClick={() => fitView({ padding: 0.2, duration: 250 })} title="顯示完整流程 F" aria-label="顯示完整流程"><Maximize size={15}/></button><button className="icon-button" title={inspectorOpen ? '收合節點設定' : '展開節點設定'} aria-label={inspectorOpen ? '收合節點設定' : '展開節點設定'} onClick={() => setInspectorOpen(value => !value)}>{inspectorOpen ? <PanelRightClose size={17}/> : <PanelRightOpen size={17}/>}</button></div>
+      </div><div className="wf-flow" ref={container} tabIndex={0} aria-label="工作流畫布，雙擊新增節點" onDoubleClick={event => { if (event.target.closest('.react-flow__pane')) openQuickAdd(event); }} onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }} onDrop={event => { event.preventDefault(); const type = event.dataTransfer.getData('application/vision-workflow-node'); addNode(type, screenToFlowPosition({ x: event.clientX, y: event.clientY })); }}>
+        <ReactFlow nodes={displayNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={locked ? undefined : onNodesChange} onEdgesChange={locked ? undefined : onEdgesChange} onNodeDragStart={() => { if (!locked) remember(); }} onConnect={connect} nodesDraggable={!locked} nodesConnectable={!locked} edgesReconnectable={false} deleteKeyCode={null} selectionKeyCode="Shift" onNodeClick={(_, node) => { setSelectedId(node.id); setQuickAdd(null); }} onNodeDoubleClick={(_, node) => { setSelectedId(node.id); setInspectorOpen(true); }} onPaneClick={() => { setSelectedId(''); setQuickAdd(null); }} onPaneContextMenu={openQuickAdd} defaultEdgeOptions={{ type: 'smoothstep', style: { stroke: '#81b99a', strokeWidth: 2 } }} minZoom={0.2} maxZoom={2} zoomOnDoubleClick={false} fitView colorMode="dark"><Background color="#2b3c31" gap={22} size={1}/><Controls showInteractive={false}/><MiniMap nodeColor={node => workflowRemoteNode(node.data.spec) ? '#bbaa88' : '#7ba98b'} maskColor="#101613aa" pannable zoomable/></ReactFlow>
+        {quickAdd && <div className="wf-quick-add" role="dialog" aria-label="新增流程節點" style={{ left: quickAdd.x, top: quickAdd.y }} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setQuickAdd(null); } }}>
+          <header><strong>新增節點</strong><button className="icon-button" aria-label="關閉新增節點" onClick={() => setQuickAdd(null)}><X size={14}/></button></header>
+          <label className="search-input"><Search size={14}/><input autoFocus aria-label="快速搜尋節點" placeholder="搜尋模型、OpenCV、規則…" value={quickQuery} onChange={event => setQuickQuery(event.target.value)}/></label>
+          <div>{workflowCatalogGroups(catalog, quickQuery).map(group => <section key={group.category}><h4>{group.category}</h4>{group.nodes.map(spec => <button key={spec.type} onClick={() => addNode(spec.type, quickAdd.position)}><span>{spec.label}</span><Plus size={13}/></button>)}</section>)}{!workflowCatalogGroups(catalog, quickQuery).length && <p className="wf-hint">沒有符合的節點。</p>}</div>
+        </div>}
+        {!nodes.length && <div className="wf-empty-canvas"><span><GitBranch size={32} strokeWidth={1.2}/></span><h2>把影像，接成你的應用。</h2><p>選一個模板，或新增節點再連接輸入與輸出。<br/>偵測、追蹤、區域與事件都在同一張畫布。</p><button className="button secondary" onClick={() => { setLibraryOpen(true); setPanel('templates'); }}>瀏覽應用模板 <ChevronRight size={15}/></button></div>}
       </div>{validation && <div className={`wf-validation ${currentValidation?.valid ? 'valid' : currentValidation ? 'invalid' : ''}`} role="status"><strong>{!currentValidation ? '流程已變更，請重新檢查' : currentValidation.valid ? '流程檢查通過' : '流程需要調整'}</strong>{currentValidation && <>{(currentValidation.errors || []).map((error, i) => <p key={`e${i}`}>{workflowErrorText(error)}</p>)}{(currentValidation.warnings || []).map((warning, i) => <p className="warning" key={`w${i}`}>{workflowErrorText(warning)}</p>)}{currentValidation.valid && currentValidation.plan && <details><summary>查看執行計畫</summary><pre>{JSON.stringify(currentValidation.plan, null, 2)}</pre></details>}</>}</div>}<WorkflowResults job={job} jobs={jobs} onSelectJob={setJobId} cancelJob={cancelJob}/></section>
-      <aside className="wf-inspector"><div className="wf-inspector-heading"><span><Settings2 size={15}/>節點設定</span>{selected && <div><button className="icon-button" title="複製節點" aria-label="複製節點" disabled={locked} onClick={() => { const id = uid(); setNodes(previous => [...previous.map(node => ({ ...node, selected: false })), { ...selected, id, position: { x: selected.position.x + 45, y: selected.position.y + 45 }, selected: true, data: structuredClone(selected.data) }]); setSelectedId(id); }}><Copy size={14}/></button><button className="icon-button danger-hover" title="刪除節點" aria-label="刪除節點" disabled={locked} onClick={() => removeNode(selected.id)}><Trash2 size={14}/></button></div>}</div>{selected ? <div className="wf-inspector-content"><span className="eyebrow">{selectedSpec?.category || 'NODE'}</span><h2>{selectedSpec?.label || selected.data.nodeType}</h2><p className="wf-hint">{selectedSpec?.description}</p>{selected.data.nodeType.startsWith('cv_') && <div className="wf-opencv-help"><strong>OpenCV 處理節點</strong>{selectedSpec?.outputs?.some(port => port.name === 'frame') ? <p>把「影像」輸出接到下一個處理／模型節點。連到「畫面與事件輸出」可查看處理後的影像；該輸出改接原始來源，就能把結果畫回原圖。</p> : <p>把「追蹤物件」接到區域規則，把「動作／狀態」接到條件節點，即可組合移動與停留事件。</p>}{['cv_background', 'cv_optical_flow', 'cv_track_motion', 'cv_histogram'].includes(selected.data.nodeType) && <p>使用影片或即時來源取得連續觀察。這裡的移動／外觀變化是數值規則，可接條件節點，不代表已辨識特定行為。</p>}{selected.data.nodeType === 'cv_contours' && <p>輪廓的「偵測框」可接追蹤與區域規則；標籤由你設定，並非模型辨識出的物件類別。</p>}</div>}{workflowRemoteNode(selectedSpec) && <p className="wf-remote-description"><Cloud size={14}/>此節點會將影像傳送至雲端 API。</p>}{selectedSpec?.params?.some(param => param.key === 'zones') && <WorkflowZoneEditor key={selected.id} media={selectedMedia} zones={selected.data.params.zones} onChange={value => updateParam('zones', value)} disabled={locked}/>}<div className="wf-parameter-fields">{(selectedSpec?.params || []).map(param => <WorkflowParameter key={`${selected.id}:${param.key}`} nodeId={selected.id} param={param} value={selected.data.params[param.key]} modelId={selected.data.params.model_id} remote={workflowRemoteNode(selectedSpec)} integration={integration} models={models} checkpoints={checkpoints} jobs={jobs} disabled={locked} onChange={value => updateParam(param.key, value)} onError={setEditorError}/>)}</div>{!selectedSpec?.params?.length && <p className="wf-hint">此節點使用共用輸入或上游結果，沒有額外參數。</p>}<details className="wf-port-info"><summary>接點與資料型別</summary>{[...(selectedSpec?.inputs || []).map(item => ({ ...item, direction: '輸入' })), ...(selectedSpec?.outputs || []).map(item => ({ ...item, direction: '輸出' }))].map((item, i) => <p key={i}><b>{item.direction} · {workflowPortLabel(item)}</b><span style={{ color: colorFor(item.type) }}>{String(item.type)}</span></p>)}</details><small className="wf-node-id">{selected.id}</small></div> : <div className="wf-inspector-empty"><MouseHint/><h3>選取節點，調整應用</h3><p>點擊畫布上的節點來選模型、設定規則，或直接在素材上繪製區域。</p></div>}</aside>
+      {inspectorOpen && <aside className="wf-inspector"><div className="wf-resize-handle is-right" role="separator" tabIndex={0} aria-label="調整設定欄寬度" aria-orientation="vertical" aria-valuenow={inspectorWidth} onPointerDown={event => startPanelResize(event, 'right')} onPointerMove={resizePanel} onPointerUp={() => setPanelResize(null)} onPointerCancel={() => setPanelResize(null)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); setInspectorWidth(value => Math.max(230, Math.min(430, value + (event.key === 'ArrowLeft' ? 20 : -20)))); } }}/><div className="wf-inspector-heading"><span><Settings2 size={15}/>節點設定</span>{selected && <div><button className="icon-button" title="複製節點" aria-label="複製節點" disabled={locked} onClick={duplicateSelection}><Copy size={14}/></button><button className="icon-button danger-hover" title="刪除節點" aria-label="刪除節點" disabled={locked} onClick={() => removeSelection([selected.id])}><Trash2 size={14}/></button></div>}</div>{selected ? <div className="wf-inspector-content"><span className="eyebrow">{selectedSpec?.category || 'NODE'}</span><h2>{selectedSpec?.label || selected.data.nodeType}</h2><p className="wf-hint">{selectedSpec?.description}</p>{selected.data.nodeType.startsWith('cv_') && <div className="wf-opencv-help"><strong>OpenCV 處理節點</strong>{selectedSpec?.outputs?.some(port => port.name === 'frame') ? <p>把「影像」輸出接到下一個處理／模型節點。連到「畫面與事件輸出」可查看處理後的影像；該輸出改接原始來源，就能把結果畫回原圖。</p> : <p>把「追蹤物件」接到區域規則，把「動作／狀態」接到條件節點，即可組合移動與停留事件。</p>}{['cv_background', 'cv_optical_flow', 'cv_track_motion', 'cv_histogram'].includes(selected.data.nodeType) && <p>使用影片或即時來源取得連續觀察。這裡的移動／外觀變化是數值規則，可接條件節點，不代表已辨識特定行為。</p>}{selected.data.nodeType === 'cv_contours' && <p>輪廓的「偵測框」可接追蹤與區域規則；標籤由你設定，並非模型辨識出的物件類別。</p>}</div>}{workflowRemoteNode(selectedSpec) && <p className="wf-remote-description"><Cloud size={14}/>此節點會將影像傳送至雲端 API。</p>}{selectedSpec?.params?.some(param => param.key === 'zones') && <WorkflowZoneEditor key={selected.id} media={selectedMedia} zones={selected.data.params.zones} onChange={value => updateParam('zones', value)} disabled={locked}/>}<div className="wf-parameter-fields">{(selectedSpec?.params || []).map(param => <WorkflowParameter key={`${selected.id}:${param.key}`} nodeId={selected.id} param={param} value={selected.data.params[param.key]} modelId={selected.data.params.model_id} remote={workflowRemoteNode(selectedSpec)} integration={integration} models={models} checkpoints={checkpoints} jobs={jobs} disabled={locked} onChange={value => updateParam(param.key, value)} onError={setEditorError}/>)}</div>{!selectedSpec?.params?.length && <p className="wf-hint">此節點使用共用輸入或上游結果，沒有額外參數。</p>}<details className="wf-port-info"><summary>接點與資料型別</summary>{[...(selectedSpec?.inputs || []).map(item => ({ ...item, direction: '輸入' })), ...(selectedSpec?.outputs || []).map(item => ({ ...item, direction: '輸出' }))].map((item, i) => <p key={i}><b>{item.direction} · {workflowPortLabel(item)}</b><span style={{ color: colorFor(item.type) }}>{String(item.type)}</span></p>)}</details><small className="wf-node-id">{selected.id}</small></div> : <div className="wf-inspector-empty"><MouseHint/><h3>選取節點，調整應用</h3><p>點擊畫布上的節點來選模型、設定規則，或直接在素材上繪製區域。</p></div>}</aside>}
     </div>
-    <div className="wf-attribution"><span>流程草稿自動保存在此瀏覽器 · 刪除連線：選取後按 Delete</span><a href="https://github.com/Maelic/RelateAnything" target="_blank" rel="noreferrer">Based on RelateAnything by Maëlic Neau</a></div>
+    <div className="wf-attribution"><span>草稿自動儲存 · 雙擊新增 · Shift 多選 · Ctrl+D 複製 · Ctrl+Z 復原 · Delete 刪除 · F 全圖</span><a href="https://github.com/Maelic/RelateAnything" target="_blank" rel="noreferrer">Based on RelateAnything by Maëlic Neau</a></div>
     <input ref={importFile} type="file" accept=".json,application/json" hidden onChange={importGraph}/><input ref={mediaUpload} type="file" accept="image/*,video/*" hidden onChange={upload}/>
   </main>;
 }

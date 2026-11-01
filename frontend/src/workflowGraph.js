@@ -140,7 +140,7 @@ export function workflowCatalogGroups(catalog, query = '', category = '') {
   return [...groups].map(([category, nodes]) => ({ category, nodes }));
 }
 
-const workflowPortNames = { frame: '影像', detections: '偵測框', poses: '人體骨架', observations: '物件觀察', tracks: '追蹤物件', actions: '動作／狀態', events: '事件', relations: '物件關係', objects: '物件', signals: '狀態／事件' };
+const workflowPortNames = { frame: '影像', detections: '偵測框', poses: '人體骨架', observations: '物件觀察', tracks: '追蹤物件', actions: '動作／狀態', events: '事件', relations: '物件關係', objects: '物件', signals: '狀態／事件', embeddings: '視覺特徵向量' };
 export function workflowPortLabel(port) {
   return port?.label && port.label !== port.name ? port.label : workflowPortNames[port?.name] || port?.label || port?.name || '';
 }
@@ -148,6 +148,6 @@ export function workflowPortLabel(port) {
 export function workflowTemplateProfile(template) {
   const types = (template.graph?.nodes || []).map(node => node.type);
   const opencv = types.some(type => type.startsWith('cv_'));
-  const needsModel = types.some(type => ['detector', 'pose', 'skeleton_action', 'video_action', 'relation', 'vlm'].includes(type));
+  const needsModel = types.some(type => ['detector', 'pose', 'skeleton_action', 'video_action', 'relation', 'vlm', 'embedding'].includes(type));
   return { opencv, needsModel, label: opencv ? needsModel ? 'OpenCV ＋ 模型' : 'OpenCV · 無需模型權重' : '模型與規則' };
 }

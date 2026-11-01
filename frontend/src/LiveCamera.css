@@ -1,0 +1,67 @@
+.live-page-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.live-advanced-settings{margin:16px 0 0;border:1px solid #38543f;border-radius:7px;background:#15241b;padding:0 12px}
+.live-advanced-settings>summary{padding:13px 0;cursor:pointer;font-size:12px;color:#c6dfcf;line-height:1.7}
+.live-advanced-settings>summary>span{display:block;font-size:11px;color:#9dbca8;margin-left:15px}
+.live-advanced-settings:not([open])>summary>span{display:inline;margin-left:7px}
+.live-advanced-settings .live-capture-settings{margin:0;padding-top:14px}
+.live-advanced-settings .live-duration-settings{padding-bottom:12px}
+.live-pipeline-diagnostics>summary{cursor:pointer;list-style:none}
+.live-pipeline-diagnostics>summary::before{content:'';width:6px;height:6px;border-right:1.5px solid #a7ccb6;border-bottom:1.5px solid #a7ccb6;transform:rotate(-45deg);flex-shrink:0}
+.live-pipeline-diagnostics[open]>summary::before{transform:rotate(45deg)}
+.live-preferences-note{font-size:11px;line-height:1.7;color:#a2beac;margin-top:12px}
+.wf-live-node-list{padding:10px 16px;border-bottom:1px solid #344e3e;color:#b9d4c3;font-size:12px}
+.wf-live-node-list>summary{cursor:pointer;line-height:1.7}
+.wf-live-node-list .wf-live-summary{padding:12px 0 2px}
+.live-camera-workflow .page-intro{padding:20px 24px 15px;align-items:center;gap:18px}
+.live-camera-workflow .page-intro h1{font-size:23px;line-height:1.4;margin:4px 0 0}
+.live-camera-workflow .page-intro p{font-size:12px;line-height:1.7;max-width:720px;margin-top:6px;color:#abc5b4}
+.live-camera-workflow .page-intro .eyebrow{font-size:10px}
+.live-camera-workflow .live-page-actions .button{min-height:40px;font-size:12px;padding:0 13px}
+.live-workflow-steps{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 24px;margin:0 auto 20px;max-width:1800px;width:100%}
+.live-workflow-steps li{display:flex;align-items:center;gap:11px;padding:12px 14px;border:1px solid #354c3d;border-radius:8px;background:#17271d;color:#97b4a0;min-width:0}
+.live-workflow-steps li>b{display:flex;align-items:center;justify-content:center;flex:0 0 25px;height:25px;border:1px solid #4c6c57;border-radius:50%;font-size:12px;font-weight:500}
+.live-workflow-steps li>span{font-size:13px;line-height:1.5;min-width:0}
+.live-workflow-steps small{display:block;font-size:11px;line-height:1.6;margin-top:3px;color:#9db9a8;overflow-wrap:anywhere}
+.live-workflow-steps li.complete{color:#c5e9d2}.live-workflow-steps li.complete>b{background:#315a40;color:#d4f3df;border-color:#5c8a69}
+.live-workflow-steps li.current,.live-workflow-steps li.ready{border-color:#7aa58b;background:#213c2b;color:#d0eddb}
+.live-camera-workflow .live-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;padding:0 24px 28px;align-items:start}
+.live-camera-workflow .live-source-panel{display:flex;flex-direction:column;min-width:0;border-color:#45614e}
+.live-camera-workflow .live-source-panel>.panel-heading{min-height:56px;height:56px;font-size:14px}
+.live-camera-workflow .live-source-status{font-size:12px!important}
+.live-camera-workflow .live-source-mode{padding:10px;gap:8px}
+.live-camera-workflow .live-source-mode>button{font-size:13px;min-height:40px;white-space:normal}
+.live-camera-workflow .live-source-video{aspect-ratio:16/9;min-height:240px;margin:0;align-self:stretch}
+.live-camera-workflow .live-source-video>.empty-preview strong{font-size:15px}
+.live-camera-workflow .live-source-video>.empty-preview span{font-size:12px;line-height:1.7}
+.live-camera-workflow .live-source-controls{padding:18px}
+.live-camera-workflow .live-source-controls>.button{min-height:42px;font-size:13px}
+.live-camera-workflow .field>span,.live-camera-workflow .check-field{font-size:12px;line-height:1.6;color:#bed8c7}
+.live-camera-workflow .field select,.live-camera-workflow .field input{font-size:13px;min-height:40px}
+.live-camera-workflow .live-source-controls .check-field small{font-size:11px;color:#9cbda7}
+.live-camera-workflow .live-source-note{font-size:11px;color:#9ab9a5;line-height:1.8;margin:10px 0}
+.live-camera-workflow .live-source-note>code{font-size:11px}
+.live-camera-workflow .live-session-status{font-size:13px;padding-bottom:3px}
+.live-camera-workflow .live-session-status>span>small{font-size:11px}
+.live-camera-workflow .live-session-id{font-size:11px;margin-top:12px;color:#9cb6a5}
+.live-camera-workflow .live-comparison-heading{min-height:56px;padding:0 0 14px}
+.live-camera-workflow .live-comparison-heading h2{font-size:15px}.live-camera-workflow .live-comparison-heading h2 span{font-size:12px}
+.live-camera-workflow .live-comparison-heading p{font-size:11px;line-height:1.6;color:#9bb8a6;margin-top:5px}
+.live-camera-workflow .live-model-card>header{min-height:56px;padding:14px 16px}
+.live-camera-workflow .live-model-card>header strong{font-size:15px;overflow-wrap:anywhere}
+.live-camera-workflow .live-model-card>header small{font-size:11px;line-height:1.6}
+.live-camera-workflow .wf-live-result .live-result-preview{aspect-ratio:16/9;min-height:240px}
+.live-camera-workflow .live-result-preview .empty-preview strong{font-size:15px}
+.live-camera-workflow .live-result-preview .empty-preview span{font-size:12px;line-height:1.8}
+.live-camera-workflow .live-result-metrics>span{font-size:11px}.live-camera-workflow .live-result-metrics b{font-size:17px}
+.live-camera-workflow .live-card-result .prediction-list>span{font-size:12px;padding:6px 8px}
+.live-camera-workflow .live-card-result .wf-hint,.live-camera-workflow .live-window-info{font-size:12px;line-height:1.8}
+.live-camera-workflow .wf-live-events p{font-size:12px}.live-camera-workflow .wf-live-events h3{font-size:13px}
+.live-camera-workflow .wf-live-events b{font-size:11px}.live-camera-workflow .wf-stat-details{font-size:12px}
+.live-camera-workflow .live-receiver-stats>span,.live-camera-workflow .live-receiver-stats>small{font-size:11px}
+.live-camera-workflow .live-receiver-stats strong{font-size:15px}
+.live-camera-workflow .live-diagnostics-heading>strong,.live-camera-workflow .live-diagnostics-heading>span,.live-camera-workflow .live-diagnostics-grid>span,.live-camera-workflow .live-diagnostics-details>span,.live-camera-workflow .live-diagnostics-details b{font-size:11px}
+.live-camera-workflow .live-pipeline-diagnostics>p,.live-camera-workflow .live-duration-hint{font-size:11px;line-height:1.7}
+.live-page button:focus-visible,.live-page summary:focus-visible{outline:2px solid #c3efd4;outline-offset:3px}
+@media(max-width:1000px){.live-camera-workflow .page-intro{align-items:flex-start;flex-wrap:wrap}.live-camera-workflow .live-page-actions{justify-content:flex-start}.live-workflow-steps{gap:8px}.live-workflow-steps li{padding:10px;align-items:flex-start}.live-workflow-steps li>span{font-size:12px}.live-camera-workflow .live-source-video,.live-camera-workflow .wf-live-result .live-result-preview{min-height:200px}}
+@media(max-width:800px){.live-camera-workflow .live-layout{grid-template-columns:1fr;padding:0 16px 24px}.live-camera-workflow .page-intro{padding:16px}.live-workflow-steps{padding:0 16px;grid-template-columns:1fr;gap:6px;margin-bottom:16px}.live-workflow-steps li{padding:9px 12px;align-items:center}.live-workflow-steps small{display:inline;margin-left:8px}.live-camera-workflow .live-source-video,.live-camera-workflow .wf-live-result .live-result-preview{min-height:0;aspect-ratio:16/9}.live-camera-workflow .live-source-controls{padding:15px}.live-camera-workflow .live-source-controls .check-field small{display:block;margin-left:0}}
+@media(max-width:420px){.live-camera-workflow .live-page-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}.live-camera-workflow .live-page-actions>.button:first-child{grid-column:1/-1;min-height:34px}.live-workflow-steps small{display:block;margin-left:0}.live-camera-workflow .live-source-mode>button{font-size:12px}.live-camera-workflow .page-intro h1{font-size:21px}}

@@ -26,6 +26,13 @@ def templates():
     base = [("input", "source", 30, 160, {}), ("out", "output", 1300, 160, {})]
     frame = [("input", "frame", "out", "frame")]
     values = [
+        build("live-multi-model", "同畫面：雙模型＋人體骨架", "同一攝影機／影片同時送給 YOLO26、YOLOv12 和人體骨架，疊在一張結果卡。各偵測節點可改模型或微調權重。", base + [
+            ("detect_a", "detector", 380, 0, {"model_id": "yolo26x"}),
+            ("detect_b", "detector", 380, 300, {"model_id": "yolov12x"}),
+            ("pose", "pose", 380, 600, {})], frame + [
+                ("input", "frame", "detect_a", "frame"), ("input", "frame", "detect_b", "frame"),
+                ("input", "frame", "pose", "frame"), ("detect_a", "detections", "out", "observations"),
+                ("detect_b", "detections", "out", "observations"), ("pose", "poses", "out", "observations")], [PYSKL, SUPERVISION]),
         build("zone-guard", "區域闖入與停留", "偵測 → 追蹤 → 多邊形區域 → 停留／人數事件。先在畫面上設定監控區域。", base + [
             ("detect", "detector", 330, 160, {}), ("track", "tracker", 650, 160, {}), ("zone", "zone", 970, 160, {})],
             frame + [("input","frame","detect","frame"),("detect","detections","track","observations"),("track","tracks","zone","tracks"),
@@ -49,7 +56,7 @@ def templates():
             frame + [("input","frame","pose","frame"),("pose","poses","track","observations"),("track","tracks","zone","tracks"),
                      ("zone","tracks","out","observations"),("zone","events","sequence","signals"),("zone","events","out","events"),("sequence","events","out","events")], [ZONE, ASFORMER]),
         build("rgb-action-rules", "影片動作 → 規則事件", "直接用 X3D 片段分類並套用動作規則。預設是整個場景；個人模式必須另外接人體追蹤。", base + [
-            ("action","video_action",450,160,{}), ("rule","condition",850,160,{"labels":["smoking", "punching person (boxing)", "climbing ladder"],"min_score":.3})],
+            ("action","video_action",450,160,{}), ("rule","condition",850,160,{"labels":["arm wrestling", "smoking", "punching person (boxing)", "climbing ladder"],"min_score":.3})],
             frame + [("input","frame","action","frame"),("action","actions","rule","actions"),("action","actions","out","actions"),("rule","events","out","events")], [MMACTION, ("PyTorchVideo · X3D", "https://github.com/facebookresearch/pytorchvideo")]),
         build("ppe-safety", "骨架可見性＋PPE 檢查", "人體骨架與 Grounding DINO 裝備偵測合併。安全帽缺少必須連續、頭部可見，遮擋標示未知。可改用自行微調的 PPE 模型。", base + [
             ("pose","pose",330,40,{}),("track","tracker",650,40,{}),

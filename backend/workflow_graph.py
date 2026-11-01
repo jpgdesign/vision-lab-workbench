@@ -32,6 +32,11 @@ NODE_TYPES = [
         param("use_training_classes", "使用完整微調類別", False)]),
     node("pose", "人體骨架 · YOLO26n Pose", "模型", "本機 COCO 17 關節與信心分數；不是動作分類。", [port("frame", "frame")], [port("poses", "poses")], [
         param("conf", "人體信心閾值", .35, min=.01, max=.99, step=.01), param("imgsz", "輸入邊長", 640, min=320, max=1280, step=32)]),
+    node("embedding", "視覺表徵／影像分類 · DINOv3", "模型", "輸出真正的 CLS 向量；若選擇已訓練的分類 checkpoint，另輸出影像類別。原始表徵不會自動產生物件標籤。", [port("frame", "frame")], [port("embeddings", "embeddings"), port("actions", "actions")], [
+        param("model_id", "表徵模型", "dinov3_7b", "select", model_task="embedding"), param("checkpoint_id", "分類微調權重", "", "select"),
+        param("every_seconds", "推論間隔（秒）", 1., min=.1, max=120, step=.1), param("normalize", "向量 L2 正規化", True),
+        param("top_k", "分類候選數", 5, min=1, max=20, step=1), param("min_score", "分類信心下限", .25, min=0, max=1, step=.01),
+        param("max_gap_seconds", "觀察最大間隔（秒）", 5., min=.1, max=120, step=.1)]),
     node("tracker", "物件追蹤", "處理", "以 IoU 與位置配對維持工作內的追蹤 ID；遮擋後重新出現可能取得新 ID。", [port("observations", "observations", accepts=["detections", "poses"])], [port("tracks", "tracks")], [
         param("labels", "追蹤類別（空陣列＝全部）", ["person"]), param("max_age_seconds", "追蹤失聯上限（秒）", 1., min=.1, max=10, step=.1),
         param("min_iou", "配對 IoU 下限", .15, min=.01, max=.95, step=.01)]),
@@ -73,7 +78,7 @@ NODE_TYPES = [
     node("output", "畫面與事件輸出", "輸出", "輸出標註圖片／影片、事件時間軸與可下載 JSON／CSV。", [port("frame", "frame"),
         port("observations", "observations", required=False, multiple=True, accepts=["detections", "poses", "tracks"]),
         port("actions", "actions", required=False, multiple=True), port("events", "events", required=False, multiple=True),
-        port("relations", "relations", required=False, multiple=True)], [port("frame", "frame")]),
+        port("relations", "relations", required=False, multiple=True), port("embeddings", "embeddings", required=False, multiple=True)], [port("frame", "frame")]),
 ]
 from .workflow_opencv_catalog import opencv_catalog
 from .workflow_cv_rules import cv_rules_catalog

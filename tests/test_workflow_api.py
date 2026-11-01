@@ -30,6 +30,7 @@ def api(tmp_path, monkeypatch):
         "grounding_dino_base": ("detection", ["device", "conf", "prompt", "use_training_classes", "text_threshold"]),
         "rf_detr_2xl": ("detection", ["device", "conf", "accept_platform_license"]),
         "x3d_l": ("action", ["device", "top_k"]),
+        "dinov3_7b": ("embedding", ["device", "top_k"]),
     }
     models = [{"id":mid,"task":task,"available":True,"environment_available":True,"inference_supported":True,
                "capabilities":{"input_types":["image","video"],"inference_params":[{"key":k} for k in keys]}}
@@ -118,6 +119,19 @@ def test_model_free_opencv_run_requires_no_model_weights(api):
     assert request_file(api, response)["resolved_nodes"] == {}
 
 
+def test_embedding_preflight_resolves_registered_weights_without_loading_them(api):
+    value = {"version": 1, "nodes": [{"id": "input", "type": "source"}, {"id": "features", "type": "embedding"}, {"id": "out", "type": "output"}], "edges": [
+        {"source": "input", "sourceHandle": "frame", "target": "features", "targetHandle": "frame"},
+        {"source": "input", "sourceHandle": "frame", "target": "out", "targetHandle": "frame"},
+        {"source": "features", "sourceHandle": "embeddings", "target": "out", "targetHandle": "embeddings"}]}
+    response = api["client"].post("/api/workflows/run", json={"graph": value, "media_id": "movie"})
+    assert response.status_code == 201, response.text
+    assert request_file(api, response)["resolved_nodes"]["features"]["model_id"] == "dinov3_7b"
+    chosen(value, "embedding")["params"] = {"model_id": "yolo26x"}
+    checked = api["client"].post("/api/workflows/validate", json={"graph": value, "media_id": "movie"}).json()
+    assert not checked["valid"] and any("工作類型" in message for message in checked["errors"])
+
+
 def test_save_incomplete_draft_list_and_delete_exact_registered_file(api):
     client=api["client"]
     draft={"version":1,"nodes":[{"id":"input","type":"source"}],"edges":[]}
@@ -192,13 +206,13 @@ def test_checkpoint_works_without_base_weight_and_keeps_grounding_training_class
     assert api["normalizations"][-1][2] is True
 
 
-def test_dual_bundle_rejected_without_exposing_path(api):
+def test_invalid_dual_bundle_rejected_without_exposing_path(api):
     directory=api["tmp"]/"private-dual"; directory.mkdir()
     (directory/"branch_bundle.json").write_text("{}",encoding="utf-8")
     api["checkpoints"]["dual"]=directory
     value=graph(); chosen(value,"detector")["params"]["checkpoint_id"]="dual"
     result=api["client"].post("/api/workflows/run",json={"graph":value,"media_id":"movie"})
-    assert result.status_code==422 and "單模型" in result.text
+    assert result.status_code==422 and "權重無法解析" in result.text
     assert "private-dual" not in result.text and not api["app"].state.jobs.list()
 
 

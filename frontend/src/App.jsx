@@ -6,6 +6,7 @@ import Training from './Training';
 import ModelLibrary from './ModelLibrary';
 import LiveCamera from './LiveCamera';
 import WorkflowCanvas from './WorkflowCanvas';
+import EmbeddedWorkflow, { embeddedWorkflowId } from './EmbeddedWorkflow';
 import { applySystemDevices } from './systemDevices';
 import { JobPoller, mergeJobSnapshot, mergeJobUpdate } from './jobPolling';
 import { completedTrainingSignature, mergeMediaUsageSnapshot } from './mediaTrainingUsage';
@@ -105,6 +106,8 @@ export default function App() {
   const usableGpu = system?.torch?.cuda_available && system?.torch?.working !== false ? system.devices?.find(device => /^cuda:\d+$/.test(device.id)) : null;
   const environmentLabel = !system ? '環境檢查中' : usableGpu ? usableGpu.name : system.nvidia?.detected ? '偵測到 GPU · CUDA 未就緒' : !system.torch?.installed ? 'CPU · 尚未安裝 PyTorch' : system.torch?.working === false ? 'CPU · PyTorch 環境待修復' : 'CPU 模式';
   const shared = { models, media, jobs, datasets, setDatasets, system, checkpoints, notify, submitJob, cancelJob, uploadMedia, confirmLicense };
+  const embeddedId = embeddedWorkflowId();
+  if (embeddedId) return <div className="comfy-embedded-app">{connectionError && <div className="connection-banner">{connectionError}<button onClick={refresh}>重新連線</button></div>}<EmbeddedWorkflow workflowId={embeddedId} {...shared}/></div>;
   return <div className="app-shell">
     <header className="app-header">
       <button className="brand" onClick={() => setPage('inference')} aria-label="Vision Lab 首頁"><span className="brand-mark"><Aperture size={25} strokeWidth={1.8} /></span><span>VISION<span className="brand-light">LAB</span><small>視覺研究工作台</small></span></button>

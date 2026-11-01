@@ -9,7 +9,7 @@ from contextlib import nullcontext
 import math
 
 
-KINDS = {"detector", "pose", "skeleton_action", "video_action", "relation"}
+KINDS = {"detector", "pose", "skeleton_action", "video_action", "relation", "embedding"}
 MAX_SKELETON_TRACKS = 32
 MAX_SKELETON_FRAMES = 512
 MAX_VIDEO_FRAMES = 64
@@ -82,6 +82,8 @@ class ModelNode:
 
     def reset(self):
         """Reset temporal evidence, retaining an already loaded model."""
+        if self.kind == "embedding" and self.model is not None:
+            self.model.reset()
         self.buffers, self.display = {}, []
         self.last_run = self.last_time = self.source = None
         self.diagnostics = {}
@@ -100,9 +102,13 @@ class ModelNode:
             return
         from .inference import resolve_device
         self.actual_device = resolve_device(self.device)
+        if self.kind == "embedding":
+            from .workflow_embedding import EmbeddingNode
+            self.model = EmbeddingNode(self.params, self.resolved, self.actual_device)
+            return
         if self.kind == "detector":
-            from .inference import create_detector
-            self.model = create_detector(self.resolved["model_id"], self.resolved["params"], self.actual_device,
+            from .workflow_detectors import create_workflow_detector
+            self.model = create_workflow_detector(self.resolved["model_id"], self.resolved["params"], self.actual_device,
                                          self.resolved.get("checkpoint_path"), self.resolved.get("model_weight_path"))
         elif self.kind == "pose":
             from pathlib import Path
@@ -139,6 +145,9 @@ class ModelNode:
         return True
 
     def process(self, inputs, frame):
+        if self.kind == "embedding":
+            self._load()
+            return self.model.process(inputs, frame)
         from PIL import Image
         if not isinstance(inputs, dict) or not isinstance(frame, dict):
             raise ValueError("inputs and frame must be objects")

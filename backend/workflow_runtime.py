@@ -85,8 +85,8 @@ def render_output(frame, inputs, recent_events):
     import numpy as np
     from PIL import ImageDraw, ImageFont
     from .inference import draw_predictions
-    observations, actions, relations, overlays = [], [], [], []
-    for name, destination in (("observations", observations), ("actions", actions), ("relations", relations)):
+    observations, actions, relations, overlays, embeddings = [], [], [], [], []
+    for name, destination in (("observations", observations), ("actions", actions), ("relations", relations), ("embeddings", embeddings)):
         for p in packets(inputs.get(name)):
             destination.extend(p.get("display_items", p.get("items", [])))
             overlays.extend(p.get("overlays", []))
@@ -100,10 +100,13 @@ def render_output(frame, inputs, recent_events):
             continue
         if box[2] <= box[0] or box[3] <= box[1]:
             continue
-        identity = (tuple(box), item.get("label"), item.get("track_key"))
+        identity = (tuple(box), item.get("label"), item.get("track_key"), item.get("producer_node"), item.get("branch"))
         if identity in seen: continue
         seen.add(identity)
         label = str(item.get("label", "object"))
+        if len({row.get("producer_node") for row in observations if row.get("producer_node")}) > 1:
+            label += f" [{item.get('producer_model', item.get('producer_node', ''))}]"
+        if item.get("branch"): label += f" ({item['branch']})"
         if item.get("track_id") is not None: label += f" #{item['track_id']}"
         speed = item.get("motion", {}).get("speed_px_s")
         if isinstance(speed, (int, float)) and math.isfinite(speed): label += f" · {speed:.1f} px/s"
@@ -149,6 +152,10 @@ def render_output(frame, inputs, recent_events):
             draw.line([end,(end[0]-12*math.cos(theta+offset),end[1]-12*math.sin(theta+offset))], fill=(235,192,250,240), width=2)
         draw.text(((start[0]+end[0])/2,(start[1]+end[1])/2), str(relation.get("predicate", relation.get("label", ""))), font=font, fill=(255,223,255,255), stroke_width=1, stroke_fill=(0,0,0,255))
     lines = [f"{frame['timestamp']:.2f}s · frame {frame['frame_index']}"]
+    for item in embeddings[:3]:
+        age = max(0., frame["timestamp"] - float(item.get("evidence_timestamp", frame["timestamp"])))
+        suffix = f" · last {age:.1f}s" if age > .1 else ""
+        lines.append(f"{item.get('model_id', 'embedding')} · {item.get('pooling', '')} · {item.get('dimensions', 0)} dimensions{suffix}")
     for item in actions[:6]:
         scope = f"#{item['track_id']}" if item.get("track_id") is not None else item.get("scope", "scene")
         age = max(0., frame["timestamp"] - float(item.get("timestamp", frame["timestamp"])))
@@ -246,6 +253,11 @@ class WorkflowEngine:
                     result = self._instance(node).process(inputs, node_frame)
                     for value in result.values():
                         value.setdefault("fresh", True)
+                        if kind in {"detector", "pose"}:
+                            model_name = node["params"].get("model_id") or self.request.get("resolved_nodes", {}).get(ident, {}).get("model_id") or kind
+                            for item in value.get("items", []) + value.get("display_items", []):
+                                item.setdefault("producer_node", ident)
+                                item.setdefault("producer_model", model_name)
                         for event in value.get("items", []):
                             if "event_id" in event: event.setdefault("node_id", ident)
                 missing = {p["name"] for p in CATALOG[kind]["outputs"]} - set(result)
