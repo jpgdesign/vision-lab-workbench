@@ -15,9 +15,9 @@ def detection(root, names, offset=0):
         (root / split / "labels").mkdir()
         for index, name in enumerate(names):
             Image.new("RGB", (32, 32), (seed + offset + index, index, offset)).save(root / split / "images" / f"{index}.png")
-            (root / split / "labels" / f"{index}.txt").write_text(f"{index} 0.5 0.5 0.5 0.5\n")
+            (root / split / "labels" / f"{index}.txt").write_text(f"{index} 0.5 0.5 0.5 0.5\n", encoding="utf-8")
     config = root / "data.yaml"
-    config.write_text(yaml.safe_dump({"path": str(root), "train": "train/images", "val": "val/images", "names": names}))
+    config.write_text(yaml.safe_dump({"path": str(root), "train": "train/images", "val": "val/images", "names": names}), encoding="utf-8")
     result = validate_dataset(str(config), "yolo_detection")
     assert result["valid"], result
     return result["dataset"]
@@ -56,7 +56,7 @@ def test_materialized_labels_match_heads_and_sources_never_mutate(tmp_path, monk
     original = source.read_bytes()
     Path(train[0]["path"]).write_bytes(b"native loader repair")
     assert source.read_bytes() == original
-    assert json.loads((output / "class_expansion.json").read_text())["base_class_ids"] == [0, 1]
+    assert json.loads((output / "class_expansion.json").read_text(encoding="utf-8"))["base_class_ids"] == [0, 1]
 
 
 def test_old_coverage_and_missing_replay_block_training(tmp_path, monkeypatch):
@@ -155,6 +155,6 @@ def test_grounding_prompt_scope_can_be_declared_without_old_data():
 def test_bundle_cannot_be_recursively_used_as_training_source(tmp_path, mode):
     source = tmp_path / "bundle"
     source.mkdir()
-    (source / "branch_bundle.json").write_text("{}")
+    (source / "branch_bundle.json").write_text("{}", encoding="utf-8")
     checked = expansion.preview_expansion({"model_id": "yolo26x", "training_mode": mode, "checkpoint_path": str(source)})
     assert not checked["valid"] and "遞迴" in checked["errors"][0]

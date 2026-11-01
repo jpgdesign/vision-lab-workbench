@@ -128,8 +128,7 @@ def test_rfdetr_saved_source_head_and_position_configuration_are_not_guessed():
 def test_native_rfdetr_train_entry_does_not_repeat_expanded_semantic_rows(tmp_path, monkeypatch):
     from collections import defaultdict
     from rfdetr.detr import RFDETR
-    from rfdetr.config import TrainConfig
-    from rfdetr_plus.models.detection import RFDETR2XLargeConfig
+    from rfdetr.config import RFDETRBaseConfig, TrainConfig
     expansion = spec(["person", "car", "toothbrush"], ["person", "car", "toothbrush", "rice", "tofu"], [1, 3, 90])
     network = TinyRF()
     expand_rfdetr_rows(network, expansion)
@@ -140,7 +139,10 @@ def test_native_rfdetr_train_entry_does_not_repeat_expanded_semantic_rows(tmp_pa
     wrapper = object.__new__(RFDETR)
     wrapper.model = SimpleNamespace(model=network, class_names=None, reinitialize_detection_head=forbidden_resize,
                                     train=lambda **kwargs: captured.update(kwargs))
-    wrapper.model_config = RFDETR2XLargeConfig(num_classes=len(expansion["classes"]) + 1)
+    # This exercises the shared RFDETR training entry; no optional PML model
+    # architecture is built or needed to check preservation of semantic rows.
+    wrapper.model_config = RFDETRBaseConfig(num_classes=len(expansion["classes"]) + 1,
+                                          pretrain_weights=None, device="cpu")
     wrapper.callbacks = defaultdict(list)
     wrapper._load_classes = lambda _: expansion["classes"]
     monkeypatch.setattr("rfdetr.detr.MetricsPlotSink", lambda **kwargs: SimpleNamespace(update=lambda *_: None, save=lambda *_: None))
@@ -158,7 +160,7 @@ def dataset(tmp_path, name, classes, labels):
         (root / split / "images").mkdir(parents=True)
         (root / split / "labels").mkdir()
         Image.new("RGB", (100, 50)).save(root / split / "images" / "image.png")
-        (root / split / "labels" / "image.txt").write_text("\n".join(f"{label} .5 .5 .4 .4" for label in labels))
+        (root / split / "labels" / "image.txt").write_text("\n".join(f"{label} .5 .5 .4 .4" for label in labels), encoding="utf-8")
     return {"format": "yolo_detection", "classes": classes, "details": {"root": str(root),
             **{f"{split}_images": [str(root / split / "images" / "image.png")] for split in ("train", "val")}}}
 
@@ -271,7 +273,7 @@ def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch,
         source = tmp_path / "source"
         source.mkdir()
         torch.save({"model": model, "train_args": dict(DEFAULT_CFG_DICT)}, source / "best.pt")
-        (source / "workbench_training.json").write_text(json.dumps({"model_id": "yolo26x", "classes": ["cat", "dog"]}))
+        (source / "workbench_training.json").write_text(json.dumps({"model_id": "yolo26x", "classes": ["cat", "dog"]}), encoding="utf-8")
 
         def make_dataset(name, names, color_offset):
             root = tmp_path / name
@@ -280,9 +282,9 @@ def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch,
                 (root / split / "labels").mkdir()
                 for i in range(max(2, len(names))):
                     Image.new("RGB", (64, 64), (split_color+color_offset+i, 10+i, color_offset)).save(root / split / "images" / f"{i}.png")
-                    (root / split / "labels" / f"{i}.txt").write_text(f"{i % len(names)} .5 .5 .4 .4\n")
+                    (root / split / "labels" / f"{i}.txt").write_text(f"{i % len(names)} .5 .5 .4 .4\n", encoding="utf-8")
             path = root / "dataset.yaml"
-            path.write_text(yaml.safe_dump({"path": str(root), "train": "train/images", "val": "val/images", "names": names}))
+            path.write_text(yaml.safe_dump({"path": str(root), "train": "train/images", "val": "val/images", "names": names}), encoding="utf-8")
             checked = validate_dataset(str(path), "yolo_detection")
             assert checked["valid"], checked
             return checked["dataset"]
@@ -298,7 +300,7 @@ def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch,
         output = tmp_path / "job"
         result = run_training(request, output, lambda _: None)
         assert result["training"]["classes"] == ["cat", "dog", "rice"]
-        audit = json.loads((output / "expansion_transfer.json").read_text())
+        audit = json.loads((output / "expansion_transfer.json").read_text(encoding="utf-8"))
         assert audit["old_rows_verified"] == 2 and len(audit["heads"]) == 6
         retention = result["training"]["retention"]
         if mode == "expand_classes":
@@ -307,7 +309,7 @@ def test_native_yolo_full_expansion_adapter_one_cpu_epoch(tmp_path, monkeypatch,
             assert retention["delta"]["old"] is not None
         else:
             assert retention["before"]["old"] is retention["after"]["old"] is retention["delta"]["old"] is None
-            assert len((output / "train_images.txt").read_text().splitlines()) == 2
+            assert len((output / "train_images.txt").read_text(encoding="utf-8").splitlines()) == 2
         assert retention["after"]["new"]["class_count"] == 1
         restored = torch.load(result["checkpoint_path"], map_location="cpu", weights_only=False)["model"]
         assert restored.names == {0: "cat", 1: "dog", 2: "rice"}
