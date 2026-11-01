@@ -158,16 +158,18 @@ def test_comfy_preflight_errors_stop_before_any_environment_change(tmp_path, mon
     assert not (tmp_path / "new").exists()
 
 
-def test_comfy_is_installed_after_workbench_dependencies_finish(tmp_path, monkeypatch):
-    python = setup.venv_python(tmp_path)
+@pytest.mark.parametrize("system", ["Windows", "Linux"])
+def test_comfy_is_installed_after_workbench_dependencies_finish(tmp_path, monkeypatch, system):
+    info = hardware(system=system, working=True)
+    comfy = {"action": "reuse", "root": "existing", "errors": [], "notes": []}
+    plan = setup.build_plan(info, tmp_path, target_exists=True, skip_frontend=True, comfy_plan=comfy)
+    python = Path(plan["python"])
     python.parent.mkdir(parents=True)
     python.touch()
     (tmp_path / "pyvenv.cfg").write_text("home = test")
-    comfy = {"action": "reuse", "root": "existing", "errors": [], "notes": []}
-    plan = setup.build_plan(hardware(working=True), tmp_path, target_exists=True, skip_frontend=True, comfy_plan=comfy)
     commands = []
     monkeypatch.setattr(setup, "_run", lambda command, **kwargs: commands.append(command))
-    monkeypatch.setattr(setup, "probe_torch", lambda *a: hardware(working=True)["torch"])
+    monkeypatch.setattr(setup, "probe_torch", lambda *a: info["torch"])
     def install(value, **kwargs):
         assert value == comfy and kwargs["project_root"] == ROOT
         assert commands[-1][-1] == "check"
@@ -251,7 +253,10 @@ def test_private_environment_is_owned_registered_and_usable_by_launcher(tmp_path
     monkeypatch.setattr(setup.Path, "home", lambda: user)
     identity = hashlib.sha256(str(project).casefold().encode()).hexdigest()[:12]
     target = user / ".vwb/workbench" / identity / "venv"
-    plan = setup.build_plan(hardware(working=True), target, skip_frontend=True)
+    # Registration is consumed by the native launcher, so its planned Python
+    # must use this host's layout rather than the Windows hardware fixture.
+    info = hardware(system=setup.platform.system(), machine=setup.platform.machine(), working=True)
+    plan = setup.build_plan(info, target, profile="base", skip_frontend=True)
     plan.update(project_root=str(project), managed_workbench_cache=True, save_environment=True)
     python = Path(plan["python"])
     def run(command, **kwargs):
@@ -260,7 +265,7 @@ def test_private_environment_is_owned_registered_and_usable_by_launcher(tmp_path
             python.touch()
             (target / "pyvenv.cfg").write_text("home = test")
     monkeypatch.setattr(setup, "_run", run)
-    monkeypatch.setattr(setup, "probe_torch", lambda *a: hardware(working=True)["torch"])
+    monkeypatch.setattr(setup, "probe_torch", lambda *a: info["torch"])
     setup.execute_plan(plan)
     assert (target.parent / "project.json").is_file()
     assert launcher.environment_python(project, environ={}, current=tmp_path / "system-python") == python
