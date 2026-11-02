@@ -141,6 +141,10 @@ def training_capabilities(model_id: str) -> dict:
             _parameter("lrf", "最後學習率 / 初始學習率", 0.01, min=0, max=1, step=0.01),
             _parameter("box", "定位損失權重", 7.5, min=0, max=1000, step=0.1),
             _parameter("cls", "分類損失權重", 0.5, min=0, max=1000, step=0.1),
+            _parameter("degrees", "隨機旋轉範圍（±度；0 停用）", 0.0, min=0, max=180, step=1),
+            _parameter("hsv_h", "色相擾動幅度（0 停用）", 0.015, min=0, max=1, step=0.005),
+            _parameter("hsv_s", "彩度擾動幅度（0 停用）", 0.7, min=0, max=1, step=0.05),
+            _parameter("hsv_v", "亮度擾動幅度（0 停用）", 0.4, min=0, max=1, step=0.05),
         ]
         if model_id != "yolo26x":
             params.append(_parameter("dfl", "DFL 損失權重", 1.5, min=0, max=1000, step=0.1))
@@ -395,6 +399,15 @@ def _yolo_warmup_options(p: dict) -> dict:
     return {"warmup_epochs": p["warmup_epochs"], "warmup_bias_lr": 0.0}
 
 
+def _yolo_augmentation_options(p: dict) -> dict:
+    # The master switch also disables native geometry/Mosaic defaults. Merely
+    # setting Ultralytics' `augment=False` would only disable inference TTA.
+    if not p["augmentation"]:
+        return dict(mosaic=0, mixup=0, copy_paste=0, degrees=0, translate=0, scale=0,
+                    shear=0, perspective=0, flipud=0, fliplr=0, hsv_h=0, hsv_s=0, hsv_v=0)
+    return {key: p[key] for key in ("degrees", "hsv_h", "hsv_s", "hsv_v")}
+
+
 def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
     import torch
     import yaml
@@ -577,9 +590,7 @@ def _train_yolo(request: dict, p: dict, output: Path, emit: Emit) -> dict:
                   plots=False, pretrained=True, resume=False, cache=False, deterministic=True)
     if "dfl" in p:
         kwargs["dfl"] = p["dfl"]
-    if not p["augmentation"]:
-        kwargs.update(mosaic=0, mixup=0, copy_paste=0, degrees=0, translate=0, scale=0,
-                      shear=0, perspective=0, flipud=0, fliplr=0, hsv_h=0, hsv_s=0, hsv_v=0)
+    kwargs.update(_yolo_augmentation_options(p))
     model.train(trainer=LocalDetectionTrainer, **kwargs)
     trainer = model.trainer
     best = Path(trainer.best)
