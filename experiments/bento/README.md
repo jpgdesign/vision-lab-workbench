@@ -153,6 +153,59 @@ separate between branches. The tests use randomly initialized native YOLO26n on
 CPU, take an actual new-branch optimization step, and check old tensor/output
 invariance, feature isolation, invalid backbone rejection and portable reload.
 
+## Full-source baseline and parallel annotation review
+
+`train_bento_full_yolo26.py` is a separate runner for an explicit arbitrary-size
+taxonomy. It leaves the six-class experiment unchanged. It verifies this study's
+original YOLO26x checkpoint hash, freezes all backbone parameters and buffers,
+resets new semantic class projections, and selects the checkpoint on validation
+mAP50–95. The original 80-class inference path remains separate and immutable.
+
+The 2026-11-05 baseline uses 1,727 training images, 236 validation images and the
+same 59-image test cohort; 14 legacy images are held out separately. All six
+sources are represented. Exact-image alternatives, empty annotations, known
+quality issues and protected related images are recorded separately. Related
+images stay in one split; the earlier representative-image sampling cap is
+removed. This is not all 2,197 files placed in training.
+
+There are 149 candidate output names, including broad labels and unresolved
+source terms; 144 have training examples. This **flat-label baseline does not
+implement hierarchical or partial-label supervision**. A parallel annotation
+version preserves hierarchy, preparation and dish attributes with unknown values
+and review evidence. Neither name mapping nor visual review of a subset establishes
+complete annotations. Source labels and this baseline's frozen dataset are not
+overwritten by review work.
+
+```powershell
+python train_bento_full_yolo26.py --dataset C:/data/full-bento/dataset.yaml --weights C:/models/yolo26x.pt --output C:/runs/full-bento --epochs 60 --batch 2 --patience 15 --device 0 --workers 0 --allow-untrained-classes cod corn fried_chicken_cube preserved_egg_tofu white_radish
+```
+
+The allowance is specific to this dataset: it must exactly match the actual
+train-empty classes. Omit it when every class has training examples. It never
+moves test images into training. Add `--audit-only` to check data and the source
+hash without loading a model, allocating GPU tensors, or reserving a run folder.
+Existing nonempty run directories are rejected.
+
+After the trainer finishes, verify and evaluate the actual shared model:
+
+```powershell
+python finish_bento_full_baseline.py --run C:/runs/full-bento --dataset C:/data/full-bento/dataset.yaml --weights C:/models/yolo26x.pt --canary-images C:/data/old-task-canaries --taxonomy-review C:/data/full-bento/taxonomy_review.json --allow-untrained-classes cod corn fried_chicken_cube preserved_egg_tofu white_radish --device cuda:0
+```
+
+The finisher keeps all-taxonomy scores and adds explicitly labeled trained-only
+and optional fine/broad/review category views. Ground-truth-absent categories are
+not presented as validated. It checks hashes and requires completed training;
+it does not start or alter training. `--expected-new-classes` on the lower-level
+bundle verifier now accepts this explicit class count; its default remains six.
+When `manifest.json` explicitly declares `legacy_samples`, the finisher validates
+their image/label hashes, boxes and split isolation before scoring that historical
+holdout separately. It does not discover or silently add arbitrary image folders.
+
+The initial batch-4 attempt failed on its first batch with a cuDNN/CUBLAS execution
+error; its logs were preserved and batch 2 was started as a fresh run. No full-source
+accuracy result is claimed here before final evaluation. This is an exploratory
+baseline, not the completed three-model comparison or a commercial benchmark.
+
 ## Research limits and next comparisons
 
 - Frozen-path preservation keeps original errors too; it does not make the old

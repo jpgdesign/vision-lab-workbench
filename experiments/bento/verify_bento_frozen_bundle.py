@@ -69,6 +69,8 @@ def main():
     parser.add_argument("--canary-images", type=Path, default=ROOT / "outputs/vision_training_starter/images")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--expected-new-classes", type=int, default=6,
+                        help="Explicit expected class count for the new branch; defaults to the earlier six-class pilot")
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
     torch.manual_seed(42)
@@ -87,8 +89,8 @@ def main():
     old = YOLO(str(args.old_checkpoint)).model.float().to(args.device).eval()
     new = YOLO(str(args.new_checkpoint)).model.float().to(args.device).eval()
     names = {"old": dict(old.names), "new": dict(new.names)}
-    if len(names["old"]) != 80 or len(names["new"]) != 6:
-        raise ValueError("Expected original 80 classes and six new coarse classes")
+    if args.expected_new_classes < 1 or len(names["old"]) != 80 or len(names["new"]) != args.expected_new_classes:
+        raise ValueError(f"Expected original 80 classes and {args.expected_new_classes} explicitly configured new classes")
     reference = []
     started = time.perf_counter()
     for index, path in enumerate(images, 1):
@@ -152,7 +154,7 @@ def main():
                                        for name in ("branches.json", "branches.safetensors")},
                "bundle": str(out / "bundle/branches.json"), "seconds": time.perf_counter() - started,
                "limitations": ["Fixed-image deterministic canary, not full COCO80 AP validation",
-                               "Six-class food pilot is not 91-class food recognition",
+                               f"New food branch contains {len(names['new'])} configured source-label classes; label granularity and coverage require separate evaluation",
                                "FP16, ONNX/TensorRT, dynamic shapes and camera pipelines are not verified here",
                                "Original model errors remain; branches return independent namespaced results"]}
     if not summary["source_files_unchanged"]:
