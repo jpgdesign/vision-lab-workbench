@@ -1,0 +1,615 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-04T15:58:48.855838+00:00",
+  "model": "YOLO26x",
+  "status": "completed_six_class_source_annotation_pilot",
+  "scope": "Frozen original inference path plus isolated new neck/head, sharing one immutable backbone",
+  "dataset": {
+    "images": 405,
+    "boxes": 825,
+    "train": 287,
+    "val": 59,
+    "test": 59,
+    "classes": [
+      "staple",
+      "vegetable",
+      "egg",
+      "soy",
+      "meat",
+      "seafood"
+    ],
+    "split_policy": "Group-disjoint before augmentation; exact decoded-image duplicates removed; legacy groups excluded",
+    "manifest_sha256": "6866a2a488d1326652b42d3356ecbdfd3dbd4fc44a5e6dca1eedf13ae2a866e7",
+    "annotation_status": "Original source annotations mapped to coarse classes; not fully manually reviewed"
+  },
+  "training": {
+    "completed_epochs": 60,
+    "best_epoch": 57,
+    "seed": 42,
+    "frozen_backbone_modules": 11,
+    "checked_frozen_tensors_per_epoch": 498,
+    "optimizer": "AdamW",
+    "lr0": 0.0003,
+    "batch": 2,
+    "nbs": 16,
+    "precision": "FP32",
+    "versions": {
+      "torch": "2.8.0+cu128",
+      "torchvision": "0.23.0+cu128",
+      "ultralytics": "8.4.0",
+      "numpy": "2.2.6"
+    },
+    "script_revision_note": "Tiny floating-point EMA rounding can affect epoch validation; original path remains immutable. Final saved-best FP32 val/test and actual branch equivalence are authoritative. No claim of completed multi-seed/formal benchmark.",
+    "executed_training_script_sha256": "36d8bcd655d191bace7edb20c0c0d544832de3050d319972bd9f955b92569bbc"
+  },
+  "shared_inference_protocol": {
+    "device": "cuda:0",
+    "dtype": "float32",
+    "imgsz": 640,
+    "preprocessing": "verify_bento_frozen_bundle.preprocess: square LetterBox auto=False, RGB /255",
+    "conv_bn_fused": false,
+    "forward": "FrozenYOLO26Branches.forward(branch='both')",
+    "decode": "verify_bento_frozen_bundle.decode: confidence > .001, max100 separately per branch, no NMS",
+    "fixed_confidence": 0.25,
+    "fixed_matching_iou": 0.5,
+    "ap_iou_range": [
+      0.5,
+      0.95
+    ],
+    "deterministic_algorithms": true,
+    "cublas_workspace_config": ":4096:8",
+    "additional_nms": false,
+    "cross_branch_suppression": false,
+    "test_threshold_tuning": false,
+    "selection": "Bundle supplied after checkpoint selection; this evaluator performs no selection or training"
+  },
+  "shared_new_task": {
+    "val": {
+      "images": 59,
+      "metrics": {
+        "map50": 0.5856481392198603,
+        "map50_95": 0.35690879272838905,
+        "coco_ar100": 0.5336216153127917,
+        "fixed_025_iou_050": {
+          "micro": {
+            "tp": 75,
+            "fp": 31,
+            "fn": 37,
+            "support": 112,
+            "precision": 0.7075471698113207,
+            "recall": 0.6696428571428571,
+            "f1": 0.6880733944954128
+          },
+          "per_class": {
+            "staple": {
+              "tp": 27,
+              "fp": 4,
+              "fn": 5,
+              "support": 32,
+              "precision": 0.8709677419354839,
+              "recall": 0.84375,
+              "f1": 0.8571428571428571,
+              "map50_95": 0.5878848856566806,
+              "map50": 0.8297190488157349
+            },
+            "vegetable": {
+              "tp": 20,
+              "fp": 7,
+              "fn": 15,
+              "support": 35,
+              "precision": 0.7407407407407407,
+              "recall": 0.5714285714285714,
+              "f1": 0.6451612903225806,
+              "map50_95": 0.27666155889637856,
+              "map50": 0.5603381556027804
+            },
+            "egg": {
+              "tp": 10,
+              "fp": 5,
+              "fn": 5,
+              "support": 15,
+              "precision": 0.6666666666666666,
+              "recall": 0.6666666666666666,
+              "f1": 0.6666666666666666,
+              "map50_95": 0.40359368892673286,
+              "map50": 0.6260004192080489
+            },
+            "soy": {
+              "tp": 4,
+              "fp": 2,
+              "fn": 4,
+              "support": 8,
+              "precision": 0.6666666666666666,
+              "recall": 0.5,
+              "f1": 0.5714285714285714,
+              "map50_95": 0.34142957885532144,
+              "map50": 0.6046204620462047
+            },
+            "meat": {
+              "tp": 13,
+              "fp": 13,
+              "fn": 4,
+              "support": 17,
+              "precision": 0.5,
+              "recall": 0.7647058823529411,
+              "f1": 0.6046511627906976,
+              "map50_95": 0.25713056878769563,
+              "map50": 0.4872701555869872
+            },
+            "seafood": {
+              "tp": 1,
+              "fp": 0,
+              "fn": 4,
+              "support": 5,
+              "precision": 1.0,
+              "recall": 0.2,
+              "f1": 0.3333333333333333,
+              "map50_95": 0.2747524752475248,
+              "map50": 0.40594059405940597
+            }
+          }
+        },
+        "ap_confidence_floor": 0.001,
+        "nms_iou": null,
+        "max_detections_per_image": 100,
+        "threshold_selection": "Fixed at 0.25 before evaluation; no test-set threshold tuning",
+        "postprocessing": "Native independent end-to-end branches; no additional or cross-branch NMS",
+        "ap_confidence_comparison": "> 0.001"
+      }
+    },
+    "test": {
+      "images": 59,
+      "metrics": {
+        "map50": 0.8251574442279327,
+        "map50_95": 0.4517525523734917,
+        "coco_ar100": 0.6091345021492083,
+        "fixed_025_iou_050": {
+          "micro": {
+            "tp": 90,
+            "fp": 20,
+            "fn": 33,
+            "support": 123,
+            "precision": 0.8181818181818182,
+            "recall": 0.7317073170731707,
+            "f1": 0.7725321888412017
+          },
+          "per_class": {
+            "staple": {
+              "tp": 28,
+              "fp": 4,
+              "fn": 12,
+              "support": 40,
+              "precision": 0.875,
+              "recall": 0.7,
+              "f1": 0.7777777777777778,
+              "map50_95": 0.5199784905196931,
+              "map50": 0.8264899261603661
+            },
+            "vegetable": {
+              "tp": 28,
+              "fp": 8,
+              "fn": 9,
+              "support": 37,
+              "precision": 0.7777777777777778,
+              "recall": 0.7567567567567568,
+              "f1": 0.7671232876712328,
+              "map50_95": 0.3376676254403555,
+              "map50": 0.7713431151471949
+            },
+            "egg": {
+              "tp": 10,
+              "fp": 2,
+              "fn": 5,
+              "support": 15,
+              "precision": 0.8333333333333334,
+              "recall": 0.6666666666666666,
+              "f1": 0.7407407407407407,
+              "map50_95": 0.5164771749219951,
+              "map50": 0.7899186072453399
+            },
+            "soy": {
+              "tp": 6,
+              "fp": 3,
+              "fn": 3,
+              "support": 9,
+              "precision": 0.6666666666666666,
+              "recall": 0.6666666666666666,
+              "f1": 0.6666666666666666,
+              "map50_95": 0.4698649470210179,
+              "map50": 0.727375369115859
+            },
+            "meat": {
+              "tp": 14,
+              "fp": 3,
+              "fn": 3,
+              "support": 17,
+              "precision": 0.8235294117647058,
+              "recall": 0.8235294117647058,
+              "f1": 0.8235294117647058,
+              "map50_95": 0.4696750834462919,
+              "map50": 0.9348275486889351
+            },
+            "seafood": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 1,
+              "support": 5,
+              "precision": 1.0,
+              "recall": 0.8,
+              "f1": 0.8888888888888888,
+              "map50_95": 0.39685199289159684,
+              "map50": 0.900990099009901
+            }
+          }
+        },
+        "ap_confidence_floor": 0.001,
+        "nms_iou": null,
+        "max_detections_per_image": 100,
+        "threshold_selection": "Fixed at 0.25 before evaluation; no test-set threshold tuning",
+        "postprocessing": "Native independent end-to-end branches; no additional or cross-branch NMS",
+        "ap_confidence_comparison": "> 0.001"
+      }
+    }
+  },
+  "old_path_preservation": {
+    "canary_images": 10,
+    "status": "passed",
+    "raw_outputs_and_boxes_bitwise_equal": true,
+    "portable_reload_bitwise_equal": true,
+    "source_files_unchanged": true,
+    "device": "cuda:0",
+    "precision": "float32",
+    "bundle_files_sha256": {
+      "branches.json": "540c777b61079fe5e2e18c2611a9c2c895801039b10ef7d284c03e4b35f7fb89",
+      "branches.safetensors": "8e4a64775ebe012592304500d9bd8c355f1c59fc62b764f25c573f335e958568"
+    },
+    "old_checkpoint_sha256": "9fdd44a31c504547ffb81d2c6d9e6dac3493c8eaa8b0398d3f43bae6c7003e92",
+    "new_checkpoint_sha256": "9a015785033e8c73d611b8120f710c6ef896c65dfed8b7c7b8d973d44fa3b392",
+    "limitation": "Ten fixed inputs only; not full COCO80, exports or live camera validation"
+  },
+  "legacy_diagnostic": {
+    "images": 10,
+    "boxes": 85,
+    "protocol": {
+      "taxonomy": [
+        "staple",
+        "vegetable",
+        "egg",
+        "soy",
+        "meat",
+        "seafood"
+      ],
+      "display_names": [
+        "主食",
+        "蔬菜與菇藻",
+        "蛋類料理",
+        "黃豆與豆製品",
+        "畜禽肉類",
+        "魚與海鮮"
+      ],
+      "legacy_total_images": 14,
+      "fully_mappable_images": 10,
+      "ground_truth_objects": 85,
+      "imgsz": 640,
+      "prediction_conf_floor": 0.001,
+      "fixed_confidence": 0.25,
+      "matching_iou": 0.5,
+      "post_mapping_classwise_nms_iou": 0.7,
+      "max_detections": 100,
+      "evaluation_postprocessing": "Both models receive the same classwise NMS at IoU 0.7 after mapping labels. This removes duplicate fine-class boxes after collapse and also applies to the new six-class output. The all-14 localization diagnostic maps every class to food before the same NMS.",
+      "comparison_scope": "Same fully-mappable legacy images and same six-class ground truth; unknown GT images excluded in full.",
+      "warnings": [
+        "Old YOLO26 used original 14-image validation for checkpoint selection, so it has a selection advantage.",
+        "New experiment excluded original legacy groups and connected duplicate/sequence groups from training and new validation.",
+        "This is not a new independent test for the old model and does not establish restored 91-class ability.",
+        "Coarse categories group dishes by main ingredient; they do not determine nutrition, calories or exact recipes."
+      ]
+    },
+    "baseline": {
+      "map50": 0.34512463672078547,
+      "map50_95": 0.17400829558396214,
+      "fixed_025": {
+        "confidence": 0.25,
+        "iou": 0.5,
+        "micro": {
+          "tp": 15,
+          "fp": 5,
+          "fn": 70,
+          "support": 85,
+          "precision": 0.75,
+          "recall": 0.17647058823529413,
+          "f1": 0.2857142857142857
+        },
+        "macro_supported_classes": {
+          "precision": 0.5595238095238095,
+          "recall": 0.15487967914438502,
+          "f1": 0.21428571428571427
+        },
+        "per_class": {
+          "staple": {
+            "tp": 1,
+            "fp": 1,
+            "fn": 4,
+            "support": 5,
+            "precision": 0.5,
+            "recall": 0.2,
+            "f1": 0.2857142857142857
+          },
+          "vegetable": {
+            "tp": 12,
+            "fp": 2,
+            "fn": 10,
+            "support": 22,
+            "precision": 0.8571428571428571,
+            "recall": 0.5454545454545454,
+            "f1": 0.6666666666666666
+          },
+          "egg": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 7,
+            "support": 8,
+            "precision": 1.0,
+            "recall": 0.125,
+            "f1": 0.2222222222222222
+          },
+          "soy": {
+            "tp": 0,
+            "fp": 1,
+            "fn": 5,
+            "support": 5,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "meat": {
+            "tp": 0,
+            "fp": 1,
+            "fn": 28,
+            "support": 28,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "seafood": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 16,
+            "support": 17,
+            "precision": 1.0,
+            "recall": 0.058823529411764705,
+            "f1": 0.1111111111111111
+          }
+        }
+      }
+    },
+    "new": {
+      "map50": 0.3471544561435129,
+      "map50_95": 0.21017230121928754,
+      "fixed_025": {
+        "confidence": 0.25,
+        "iou": 0.5,
+        "micro": {
+          "tp": 19,
+          "fp": 5,
+          "fn": 66,
+          "support": 85,
+          "precision": 0.7916666666666666,
+          "recall": 0.2235294117647059,
+          "f1": 0.3486238532110092
+        },
+        "macro_supported_classes": {
+          "precision": 0.8968253968253969,
+          "recall": 0.2614368474662592,
+          "f1": 0.36677828082751684
+        },
+        "per_class": {
+          "staple": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 4,
+            "support": 5,
+            "precision": 1.0,
+            "recall": 0.2,
+            "f1": 0.3333333333333333
+          },
+          "vegetable": {
+            "tp": 10,
+            "fp": 4,
+            "fn": 12,
+            "support": 22,
+            "precision": 0.7142857142857143,
+            "recall": 0.45454545454545453,
+            "f1": 0.5555555555555556
+          },
+          "egg": {
+            "tp": 1,
+            "fp": 0,
+            "fn": 7,
+            "support": 8,
+            "precision": 1.0,
+            "recall": 0.125,
+            "f1": 0.2222222222222222
+          },
+          "soy": {
+            "tp": 3,
+            "fp": 0,
+            "fn": 2,
+            "support": 5,
+            "precision": 1.0,
+            "recall": 0.6,
+            "f1": 0.75
+          },
+          "meat": {
+            "tp": 2,
+            "fp": 1,
+            "fn": 26,
+            "support": 28,
+            "precision": 0.6666666666666666,
+            "recall": 0.07142857142857142,
+            "f1": 0.12903225806451613
+          },
+          "seafood": {
+            "tp": 2,
+            "fp": 0,
+            "fn": 15,
+            "support": 17,
+            "precision": 1.0,
+            "recall": 0.11764705882352941,
+            "f1": 0.21052631578947367
+          }
+        }
+      }
+    }
+  },
+  "latency": {
+    "device": "NVIDIA GeForce RTX 3060",
+    "protocol": {
+      "precision": "FP32; TF32 disabled; no Conv/BN fusion",
+      "batch_size": 1,
+      "deterministic_algorithms": true,
+      "cublas_workspace_config": ":4096:8",
+      "preprocessing": "640x640 square LetterBox, auto=False, scaleup=True, BGR to RGB, NCHW /255",
+      "end_to_end_includes": [
+        "letterbox and tensor preparation",
+        "input transfer",
+        "both branch forwards",
+        "independent confidence filtering and scale_boxes",
+        "output transfer to CPU",
+        "synchronization"
+      ],
+      "excludes": [
+        "model loading",
+        "state/checksum checks",
+        "disk image reading and image decoding",
+        "warmup",
+        "HTTP/camera/UI",
+        "file writing"
+      ],
+      "postprocessing": "same preservation-canary decode; confidence 0.001, max_det100 per branch, no extra NMS or shared top-k",
+      "warmup_image_pairs_per_phase": 5,
+      "repeats": 3,
+      "torch_cpu_threads": 4,
+      "phase_order": [
+        "native_two_full_models_serial",
+        "shared_frozen_backbone"
+      ],
+      "cuda_synchronized_at_each_timing_boundary": true,
+      "memory_peaks_reset_after_warmup": true,
+      "percentile_method": "numpy.percentile default linear interpolation"
+    },
+    "phases": [
+      {
+        "phase": "native_two_full_models_serial",
+        "sample_count": 30,
+        "timing": {
+          "preprocess_ms": {
+            "mean_ms": 2.034989985016485,
+            "p50_ms": 1.966449897736311,
+            "p95_ms": 2.3847449221648276,
+            "min_ms": 1.69189996086061,
+            "max_ms": 2.5553000159561634
+          },
+          "forward_ms": {
+            "mean_ms": 102.52578333796312,
+            "p50_ms": 102.27435000706464,
+            "p95_ms": 104.78699994273484,
+            "min_ms": 100.43280012905598,
+            "max_ms": 106.04490013793111
+          },
+          "decode_ms": {
+            "mean_ms": 1.3266733149066567,
+            "p50_ms": 1.1060000397264957,
+            "p95_ms": 2.401915064547211,
+            "min_ms": 0.9786998853087425,
+            "max_ms": 2.817399799823761
+          },
+          "end_to_end_ms": {
+            "mean_ms": 105.88744663788627,
+            "p50_ms": 105.48869997728616,
+            "p95_ms": 108.82008501794189,
+            "min_ms": 103.6991998553276,
+            "max_ms": 109.36999996192753
+          }
+        },
+        "cuda_memory": {
+          "allocated_before_phase_load_bytes": 0,
+          "allocated_after_model_load_bytes": 483612160,
+          "allocated_after_warmup_bytes": 517172224,
+          "peak_allocated_during_measurement_bytes": 722946560,
+          "peak_increment_over_warm_resident_bytes": 205774336,
+          "scope": "PyTorch allocated tensors in this process; excludes CUDA driver/context and other processes"
+        }
+      },
+      {
+        "phase": "shared_frozen_backbone",
+        "sample_count": 30,
+        "timing": {
+          "preprocess_ms": {
+            "mean_ms": 1.6801966587081552,
+            "p50_ms": 1.6456999583169818,
+            "p95_ms": 1.9778149900957942,
+            "min_ms": 1.4665001071989536,
+            "max_ms": 2.1403999999165535
+          },
+          "forward_ms": {
+            "mean_ms": 78.37417003077765,
+            "p50_ms": 78.04530009161681,
+            "p95_ms": 80.48168499954045,
+            "min_ms": 76.6992000862956,
+            "max_ms": 81.32510003633797
+          },
+          "decode_ms": {
+            "mean_ms": 1.343469989175598,
+            "p50_ms": 1.0270999046042562,
+            "p95_ms": 1.981225050985811,
+            "min_ms": 0.9154998697340488,
+            "max_ms": 5.750900134444237
+          },
+          "end_to_end_ms": {
+            "mean_ms": 81.3978366786614,
+            "p50_ms": 80.96444990951568,
+            "p95_ms": 83.6647899239324,
+            "min_ms": 79.6264000236988,
+            "max_ms": 86.0576000995934
+          }
+        },
+        "cuda_memory": {
+          "allocated_before_phase_load_bytes": 33554432,
+          "allocated_after_model_load_bytes": 397922304,
+          "allocated_after_warmup_bytes": 398125056,
+          "peak_allocated_during_measurement_bytes": 582084608,
+          "peak_increment_over_warm_resident_bytes": 183959552,
+          "scope": "PyTorch allocated tensors in this process; excludes CUDA driver/context and other processes"
+        }
+      }
+    ],
+    "comparison": {
+      "mean_end_to_end_speedup": 1.3008631550725827,
+      "mean_forward_speedup": 1.3081578190582572,
+      "parameters_saved": 28847328,
+      "cuda_peak_allocated_reduction_bytes": 140861952,
+      "per_sample_detection_counts_equal": true
+    },
+    "limitations": [
+      "Performance on these inputs/device/settings only; not a camera FPS guarantee",
+      "Fixed phase order can be affected by machine load, thermals or other GPU processes",
+      "Source weights, class order and head settings are checked; this benchmark does not repeat accuracy/raw-output verification"
+    ]
+  },
+  "artifacts_sha256": {
+    "evaluation.json": "7323561f94688e7141f42be26487e39cc54040974a2585e3a6c3c85e2735e6eb",
+    "shared-evaluation/evaluation.json": "06f8ad8e8522b5822fee7d70071bfb164585c7dc0f2c4f452dae236bd0dd610b",
+    "preservation/preservation_report.json": "330a8766d021ca435b7852a84e152ab6d087f3b5970cd0987dc5540d406f77c3",
+    "branch_latency.json": "d04ff42d115717d28999c9213d544f5d0f85cb3fb311e16f9f8322a62bf37f65"
+  },
+  "limitations": [
+    "Six coarse categories are not the original 91-class task",
+    "Test seafood has only five labeled objects; source annotation omissions remain",
+    "Legacy recall remains 22.35%, with 66 of 85 objects missed",
+    "No multiple-seed confirmation or new external capture benchmark",
+    "No new-method RF-DETR or Grounding DINO trial completed; no three-model winner established",
+    "Current public trainer restores frozen EMA before validation as well as save; executed revision restored before save only",
+    "Current trainer binds native dataset inputs to audited absolute lists; executed pilot already used absolute paths"
+  ]
+}

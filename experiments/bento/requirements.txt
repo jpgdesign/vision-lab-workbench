@@ -1,0 +1,5 @@
+# Install the correct PyTorch/CUDA build separately; validated with torch 2.8.0+cu128.
+ultralytics==8.4.0
+pycocotools>=2.0.10
+safetensors>=0.6.2
+pytest>=8
