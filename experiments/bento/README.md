@@ -346,6 +346,24 @@ features; they require no pretrained model downloads:
 python -m pytest bento_research/test_hierarchical_refiner.py -q
 ```
 
+### Inspect raw fine-label candidates
+
+When validation disables fine-label display, the retained-output gallery correctly
+shows only coarse labels. A separate diagnostic gallery exposes the saved raw fine
+candidates, including mistakes and labels that did not pass validation:
+
+```powershell
+python build_bento_fine_candidate_gallery.py --evaluation C:/runs/bento-fine-evaluation --coarse-evaluation C:/runs/bento-frozen/shared-evaluation --coarse-dataset C:/data/bento-coarse --output C:/runs/bento-fine-evaluation/candidate-preview --add-navigation
+```
+
+The page pairs original coarse detections with raw fine candidates, offers split
+and filename filters, and lists full names, scores and top-three candidates for
+each box. Candidate scores are within-parent classifier scores, not calibrated
+accuracy. The generator checks image hashes and exact coarse-output identity;
+it does not rerun inference, enable acceptance gates, or change model thresholds.
+The first pilot contains 74 raw fine candidates in each of validation and test,
+with zero accepted fine labels. All 59 images per split remain available.
+
 ## Research limits and next comparisons
 
 - Frozen-path preservation keeps original errors too; it does not make the old
