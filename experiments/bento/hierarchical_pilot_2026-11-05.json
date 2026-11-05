@@ -1,0 +1,496 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-05",
+  "status": "completed_no_fine_parent_passed_deployment_calibration",
+  "scope": "Frozen successful six-class detector with optional parent-conditioned linear fine head; partial source labels, not completed manual annotation-v2",
+  "data": {
+    "enabled_fine_classes": 20,
+    "train_support_eligible_classes": 22,
+    "single_child_parent_disabled_classes": 2,
+    "split_summary": {
+      "train": {
+        "source_images": 1672,
+        "all_source_objects": 5852,
+        "known_fine_objects": 415,
+        "supervised_fine_objects": 250,
+        "supervised_fine_images": 138,
+        "unknown_or_unsupported_objects": 5602,
+        "materialized_crops": 250
+      },
+      "val": {
+        "source_images": 59,
+        "all_source_objects": 112,
+        "known_fine_objects": 62,
+        "supervised_fine_objects": 31,
+        "supervised_fine_images": 19,
+        "unknown_or_unsupported_objects": 81,
+        "materialized_crops": 112
+      },
+      "test": {
+        "source_images": 59,
+        "all_source_objects": 123,
+        "known_fine_objects": 47,
+        "supervised_fine_objects": 29,
+        "supervised_fine_images": 17,
+        "unknown_or_unsupported_objects": 94,
+        "materialized_crops": 123
+      }
+    },
+    "fixed_original_coarse_val_test": true,
+    "legacy_and_related_groups_excluded": true,
+    "unknown_fine_targets_not_optimized_as_negatives": true
+  },
+  "training": {
+    "completed_epochs": 18,
+    "best_epoch": 6,
+    "head": "linear",
+    "features": "Frozen successful six-class YOLO26x pooled P3/P4/P5 neck features",
+    "train_views": 2,
+    "gt_crop_metrics_supported_classes_only": {
+      "train": {
+        "samples": 500,
+        "loss": 0.008581235073506832,
+        "accuracy": 1.0
+      },
+      "val": {
+        "samples": 31,
+        "loss": 0.7886390089988708,
+        "accuracy": 0.7096773982048035
+      },
+      "test": {
+        "samples": 29,
+        "loss": 1.723792314529419,
+        "accuracy": 0.7586206793785095
+      }
+    },
+    "frozen_detector_state_unchanged": true
+  },
+  "unfiltered_predicted_crop_diagnostics": {
+    "val": {
+      "matched_known_fine_gt": 38,
+      "correct_unfiltered_candidates": 14,
+      "unfiltered_candidate_accuracy_all_known": 0.3684210526315789,
+      "matched_supported_fine_gt": 16,
+      "correct_unfiltered_candidates_supported_only": 14,
+      "unfiltered_candidate_accuracy_supported_only": 0.875,
+      "scope": "Diagnostic before acceptance threshold; conditional on correct coarse match, not deployed precision or whole-image recall"
+    },
+    "test": {
+      "matched_known_fine_gt": 32,
+      "correct_unfiltered_candidates": 15,
+      "unfiltered_candidate_accuracy_all_known": 0.46875,
+      "matched_supported_fine_gt": 18,
+      "correct_unfiltered_candidates_supported_only": 15,
+      "unfiltered_candidate_accuracy_supported_only": 0.8333333333333334,
+      "scope": "Diagnostic before acceptance threshold; conditional on correct coarse match, not deployed precision or whole-image recall"
+    }
+  },
+  "calibration": {
+    "scope": "Actual predicted-box crops from original held-out validation only",
+    "target_observed_precision": 0.9,
+    "minimum_accepted_validation_predictions": 5,
+    "enabled_fine_parents": 0,
+    "parents": {
+      "0": {
+        "enabled": false,
+        "threshold": 1.0,
+        "reason": "Fewer than two trained child classes",
+        "trained_children": 0,
+        "known_fine_matched_validation_predictions": 1,
+        "unsupported_known_fine_validation_predictions": 1,
+        "selected_accepted": 0,
+        "selected_correct": 0,
+        "observed_precision": null,
+        "grid": []
+      },
+      "1": {
+        "enabled": false,
+        "threshold": 1.0,
+        "reason": "Insufficient validated detector-crop evidence",
+        "trained_children": 8,
+        "known_fine_matched_validation_predictions": 14,
+        "unsupported_known_fine_validation_predictions": 8,
+        "selected_accepted": 0,
+        "selected_correct": 0,
+        "observed_precision": null,
+        "grid": [
+          {
+            "threshold": 0.5,
+            "accepted": 14,
+            "correct": 5,
+            "precision": 0.35714285714285715
+          },
+          {
+            "threshold": 0.6,
+            "accepted": 11,
+            "correct": 4,
+            "precision": 0.36363636363636365
+          },
+          {
+            "threshold": 0.7,
+            "accepted": 8,
+            "correct": 3,
+            "precision": 0.375
+          },
+          {
+            "threshold": 0.8,
+            "accepted": 6,
+            "correct": 2,
+            "precision": 0.3333333333333333
+          },
+          {
+            "threshold": 0.85,
+            "accepted": 5,
+            "correct": 2,
+            "precision": 0.4
+          },
+          {
+            "threshold": 0.9,
+            "accepted": 5,
+            "correct": 2,
+            "precision": 0.4
+          },
+          {
+            "threshold": 0.95,
+            "accepted": 3,
+            "correct": 2,
+            "precision": 0.6666666666666666
+          },
+          {
+            "threshold": 0.98,
+            "accepted": 3,
+            "correct": 2,
+            "precision": 0.6666666666666666
+          },
+          {
+            "threshold": 0.99,
+            "accepted": 2,
+            "correct": 2,
+            "precision": 1.0
+          },
+          {
+            "threshold": 1.0,
+            "accepted": 0,
+            "correct": 0,
+            "precision": null
+          }
+        ]
+      },
+      "2": {
+        "enabled": false,
+        "threshold": 1.0,
+        "reason": "Insufficient validated detector-crop evidence",
+        "trained_children": 4,
+        "known_fine_matched_validation_predictions": 7,
+        "unsupported_known_fine_validation_predictions": 3,
+        "selected_accepted": 0,
+        "selected_correct": 0,
+        "observed_precision": null,
+        "grid": [
+          {
+            "threshold": 0.5,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.6,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.7,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.8,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.85,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.9,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.95,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.98,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 0.99,
+            "accepted": 7,
+            "correct": 4,
+            "precision": 0.5714285714285714
+          },
+          {
+            "threshold": 1.0,
+            "accepted": 2,
+            "correct": 2,
+            "precision": 1.0
+          }
+        ]
+      },
+      "3": {
+        "enabled": false,
+        "threshold": 1.0,
+        "reason": "Insufficient validated detector-crop evidence",
+        "trained_children": 2,
+        "known_fine_matched_validation_predictions": 4,
+        "unsupported_known_fine_validation_predictions": 4,
+        "selected_accepted": 0,
+        "selected_correct": 0,
+        "observed_precision": null,
+        "grid": [
+          {
+            "threshold": 0.5,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.6,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.7,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.8,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.85,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.9,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.95,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.98,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 0.99,
+            "accepted": 4,
+            "correct": 0,
+            "precision": 0.0
+          },
+          {
+            "threshold": 1.0,
+            "accepted": 0,
+            "correct": 0,
+            "precision": null
+          }
+        ]
+      },
+      "4": {
+        "enabled": false,
+        "threshold": 1.0,
+        "reason": "Insufficient validated detector-crop evidence",
+        "trained_children": 6,
+        "known_fine_matched_validation_predictions": 11,
+        "unsupported_known_fine_validation_predictions": 5,
+        "selected_accepted": 0,
+        "selected_correct": 0,
+        "observed_precision": null,
+        "grid": [
+          {
+            "threshold": 0.5,
+            "accepted": 11,
+            "correct": 5,
+            "precision": 0.45454545454545453
+          },
+          {
+            "threshold": 0.6,
+            "accepted": 10,
+            "correct": 4,
+            "precision": 0.4
+          },
+          {
+            "threshold": 0.7,
+            "accepted": 9,
+            "correct": 4,
+            "precision": 0.4444444444444444
+          },
+          {
+            "threshold": 0.8,
+            "accepted": 8,
+            "correct": 3,
+            "precision": 0.375
+          },
+          {
+            "threshold": 0.85,
+            "accepted": 8,
+            "correct": 3,
+            "precision": 0.375
+          },
+          {
+            "threshold": 0.9,
+            "accepted": 7,
+            "correct": 3,
+            "precision": 0.42857142857142855
+          },
+          {
+            "threshold": 0.95,
+            "accepted": 6,
+            "correct": 3,
+            "precision": 0.5
+          },
+          {
+            "threshold": 0.98,
+            "accepted": 4,
+            "correct": 3,
+            "precision": 0.75
+          },
+          {
+            "threshold": 0.99,
+            "accepted": 2,
+            "correct": 2,
+            "precision": 1.0
+          },
+          {
+            "threshold": 1.0,
+            "accepted": 0,
+            "correct": 0,
+            "precision": null
+          }
+        ]
+      },
+      "5": {
+        "enabled": false,
+        "threshold": 1.0,
+        "reason": "Fewer than two trained child classes",
+        "trained_children": 0,
+        "known_fine_matched_validation_predictions": 1,
+        "unsupported_known_fine_validation_predictions": 1,
+        "selected_accepted": 0,
+        "selected_correct": 0,
+        "observed_precision": null,
+        "grid": []
+      }
+    },
+    "test_used_for_selection": false
+  },
+  "splits": {
+    "val": {
+      "images": 59,
+      "coarse_predictions_exactly_preserved": true,
+      "map50": 0.5856481392198603,
+      "map50_95": 0.35690879272838905,
+      "fixed_025_iou_050": {
+        "tp": 75,
+        "fp": 31,
+        "fn": 37,
+        "support": 112,
+        "precision": 0.7075471698113207,
+        "recall": 0.6696428571428571,
+        "f1": 0.6880733944954128
+      },
+      "fine_metrics": {
+        "displayed_coarse_predictions": 106,
+        "unmatched_coarse_predictions": 31,
+        "matched_known_fine_gt": 38,
+        "coarse_fallback_on_known_fine_gt": 38,
+        "matched_but_fine_gt_unknown": 37,
+        "known_fine_gt_total": 62,
+        "known_fine_gt_supported_by_head": 31,
+        "fine_precision_on_matched_known_gt": null,
+        "end_to_end_known_fine_recall": 0.0,
+        "fine_coverage_on_matched_known_gt": 0.0,
+        "definition": "End-to-end recall requires coarse localization, parent match, accepted exact fine name; denominator includes unsupported known fine GT",
+        "limitation": "Fine precision is conditional on matched known fine GT; unmatched/unknown outputs reported separately, not a complete fine-detection AP"
+      }
+    },
+    "test": {
+      "images": 59,
+      "coarse_predictions_exactly_preserved": true,
+      "map50": 0.8251574442279327,
+      "map50_95": 0.4517525523734917,
+      "fixed_025_iou_050": {
+        "tp": 90,
+        "fp": 20,
+        "fn": 33,
+        "support": 123,
+        "precision": 0.8181818181818182,
+        "recall": 0.7317073170731707,
+        "f1": 0.7725321888412017
+      },
+      "fine_metrics": {
+        "displayed_coarse_predictions": 110,
+        "matched_known_fine_gt": 32,
+        "coarse_fallback_on_known_fine_gt": 32,
+        "matched_but_fine_gt_unknown": 58,
+        "unmatched_coarse_predictions": 20,
+        "known_fine_gt_total": 47,
+        "known_fine_gt_supported_by_head": 29,
+        "fine_precision_on_matched_known_gt": null,
+        "end_to_end_known_fine_recall": 0.0,
+        "fine_coverage_on_matched_known_gt": 0.0,
+        "definition": "End-to-end recall requires coarse localization, parent match, accepted exact fine name; denominator includes unsupported known fine GT",
+        "limitation": "Fine precision is conditional on matched known fine GT; unmatched/unknown outputs reported separately, not a complete fine-detection AP"
+      }
+    }
+  },
+  "preservation": {
+    "coarse_weights_unchanged": true,
+    "saved_predictions_preserved_all_val_test": true,
+    "live_canary_images": 3,
+    "coco80_and_coarse6_raw_before_after_bitwise_equal": true,
+    "live_rows_equal_saved_reference": true,
+    "scope": "Three validation canaries only; not complete COCO80 regression or all-image fresh detector evaluation"
+  },
+  "artifact_sha256": {
+    "coarse_checkpoint": "9a015785033e8c73d611b8120f710c6ef896c65dfed8b7c7b8d973d44fa3b392",
+    "fine_head": "28a9cb7f54eca11efb1b5f56af4b8e80251a8bda8e5482d8f9b73ef0fc766e6b",
+    "dataset_manifest": "409bd152f3f9ee52a26b8d6f16bfea113409e535be36857a9ddedd62c70b9538",
+    "executed_trainer": "87d386c7d589263af979a3791a924ea41f64aa9d62d840f80a1a0f992134f2cb",
+    "executed_refiner_helper": "18a0e2715d154505ea89ac33565650889f8ee4ebf2377b7bdbbfc46bd2d23b60",
+    "executed_evaluator": "1cca35f0b4fe390f9cb225c35f69cda2d0655c9d13a64372dfb0273ed98234e0"
+  },
+  "limitations": [
+    "Fine labels are source-defined and incompletely verified; enabled support minimum is not accuracy evidence.",
+    "All fine parents failed the predefined validation precision/support gate; outputs therefore preserve coarse labels only.",
+    "GT-crop supported accuracy and unfiltered candidate accuracy are diagnostics, not deployed fine-detection accuracy.",
+    "No improved fine-recognition claim, no full COCO retention claim, and no workbench/ComfyUI integration claim.",
+    "The public wrappers add portable explicit dataset paths and font fallback; archived executed-source hashes above identify the local run."
+  ]
+}

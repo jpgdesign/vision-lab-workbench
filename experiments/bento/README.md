@@ -202,9 +202,149 @@ their image/label hashes, boxes and split isolation before scoring that historic
 holdout separately. It does not discover or silently add arbitrary image folders.
 
 The initial batch-4 attempt failed on its first batch with a cuDNN/CUBLAS execution
-error; its logs were preserved and batch 2 was started as a fresh run. No full-source
-accuracy result is claimed here before final evaluation. This is an exploratory
-baseline, not the completed three-model comparison or a commercial benchmark.
+error; its logs were preserved and batch 2 was started as a fresh run. The batch-2
+run completed 60 epochs. Its actual shared-model 149-class test results were
+Precision 87.32%, Recall 50.41%, AP50 63.21% and AP50–95 40.88% on the locked
+59-image/123-box test set, using confidence 0.25 and IoU 0.5 for P/R. These are
+exploratory mixed-taxonomy results; the test has GT for only 44 classes. They are
+not directly comparable with six-coarse-class scores and do not complete the
+three-model comparison or establish commercial performance.
+
+## Preserve the six-class detector and add optional fine labels
+
+The hierarchical refinement pilot preserves the successful six-class food
+detector, including its learned neck and head. It extracts pooled P3/P4/P5 neck
+features from cropped food boxes and trains only an additional linear classifier.
+The supplied coarse parent masks incompatible fine outputs. An accepted fine
+name is extra metadata: coarse boxes, category IDs and confidence scores remain
+unchanged. Missing children, insufficient validation support or low fine
+confidence produce a coarse-only result. This preserves existing detections;
+it cannot recover food missed by the frozen detector.
+
+This differs from the 149-class baseline, which started another food branch from
+the original COCO checkpoint. The refinement runner explicitly loads the
+successful **six-class food checkpoint**, not the original 80-class checkpoint.
+The separate immutable COCO80/coarse6 shared bundle can be checked with live
+before/after canaries. These standalone scripts do not add workbench or ComfyUI
+integration, and do not implement a general multi-level hierarchical detector.
+
+The prepared 2026-11-05 pilot uses **20 enabled fine names, 250 training crops
+from 138 distinct images**. Twenty-two names met the minimum of five distinct
+training images; the two whose parent had only one supported child were disabled.
+The minimum is an eligibility rule, not evidence of adequate statistical support.
+Original validation/test remain 59/59 images with all 112/123 source GT boxes.
+Only 31/29 boxes have supported fine targets; unsupported known fine labels and
+broad unknown labels remain explicitly recorded. All related validation/test
+and legacy groups are excluded from training.
+
+**Fine targets still come from source annotations, not completed manual
+annotation-v2 ground truth.** Preparation excludes broad, ambiguous and known
+overlapping label definitions. Unknown targets are never guessed or optimized
+as negative fine labels. Residual source errors remain possible; crop accuracy
+does not establish end-to-end detector accuracy or commercial readiness.
+
+### Inputs and preparation
+
+Run these commands from this directory, with paths to your existing audited
+artifacts. Source images, annotations, checkpoints, personal paths and local
+dataset manifests are not bundled with these scripts. Small sanitized result
+summary JSON files are included. Dataset/model licenses still apply.
+
+Preparation consumes the preceding research manifests, **not an arbitrary YOLO
+ZIP**. `--coarse-dataset` must contain `manifest.json`, `class_mapping.json` and
+`legacy_holdout.json`; `--full-dataset` must contain `manifest.json`,
+`class_mapping.json` and `validation_checks.json`, together with the referenced
+images and labels. Records must retain original source IDs, source-class IDs,
+canonical names/flags, RGB and file hashes, old/new related-image group IDs,
+and normalized top-left `xywh` boxes. The original pilot's 59-image validation,
+59-image test and 149-candidate taxonomy checks are deliberate. Adapting this
+to another dataset requires a newly versioned audited protocol.
+
+```powershell
+python prepare_bento_hierarchical_crops.py --coarse-dataset C:/data/bento-coarse --full-dataset C:/data/bento-full --output C:/data/bento-fine-crops --min-train-images 5 --min-children-per-parent 2
+```
+
+This records the protected groups and hashes, writes exact-box crops without
+padding, and creates `manifest.json`, `class_counts.json`, split indices and
+`validation_checks.json`. Unsupported or unknown targets retain `class_id: null`.
+The original datasets and detector are never modified.
+
+### Train the optional classifier
+
+```powershell
+python train_bento_hierarchical_classifier.py --dataset C:/data/bento-fine-crops/manifest.json --coarse-weights C:/runs/bento-frozen/train/weights/best.pt --output C:/runs/bento-fine-head --device cuda:0 --imgsz 224 --batch 16 --epochs 80 --patience 12 --views 2
+```
+
+Only the linear head receives optimizer updates. Frozen detector state/file
+hashes are checked; feature normalization uses training crops only. The head is
+selected on supported validation-crop loss. Artifacts include `head.safetensors`,
+`scaler.npz`, model/protocol metadata, crop hashes and GT-crop diagnostics.
+GT-crop scores are labeled as supported-class diagnostics. Fine-label acceptance
+stays disabled until validation on actual detector-predicted crops.
+
+### Calibrate, preserve and evaluate
+
+```powershell
+python evaluate_bento_hierarchical_refiner.py --dataset C:/data/bento-fine-crops/manifest.json --refiner C:/runs/bento-fine-head --coarse-dataset C:/data/bento-coarse --coarse-weights C:/runs/bento-frozen/train/weights/best.pt --coarse-evaluation C:/runs/bento-frozen/shared-evaluation --bundle C:/runs/bento-frozen/preservation/bundle --output C:/runs/bento-fine-evaluation --device cuda:0 --live-canary-count 3 --target-precision 0.9 --minimum-calibration-count 5
+```
+
+The evaluator reuses the original saved coarse predictions, runs fresh fine
+inference on their actual predicted-box crops, and verifies that enrichment
+changes none of their boxes, scores or coarse categories. The reported full
+coarse scores therefore come from retained predictions, not a claimed new full
+detector run. `--coarse-dataset` resolves image paths, permitting relocation of
+the audited data. Live canaries separately rerun both original paths before and
+after refinement; they are finite checks, not full COCO validation. Use
+`--live-canary-count 0` and omit `--bundle` when only saved-output preservation is
+being checked; the report then explicitly makes no fresh-model equivalence claim.
+
+Thresholds use only the fixed validation set and include unsupported known fine
+targets as errors. Broad/unknown fine targets are excluded from fine accuracy
+and counted separately. An empirical 90% target on five or more accepted samples
+is not a deployment precision guarantee. Calibration updates the refiner's
+`thresholds.json` and archives its prior value in the evaluation folder.
+Test known-fine recall includes unsupported fine GT; unknown/unmatched outputs
+are reported separately. The report may correctly show no enabled fine parent
+if calibration evidence is insufficient.
+
+### Completed refinement pilot: 2026-11-05
+
+Training stopped after 18 epochs; validation selected epoch 6. Supported GT-crop
+accuracy was 22/31 (70.97%) on validation and 22/29 (75.86%) on test. These are
+classification diagnostics on annotated crops, not deployed fine-detection
+precision. Before applying the acceptance policy, fresh predictions on correctly
+matched detector crops had the following diagnostic exact-name counts:
+
+| Split | All matched known fine targets | Supported targets only |
+|---|---:|---:|
+| Validation | 14/38 (36.84%) | 14/16 (87.50%) |
+| Test | 15/32 (46.88%) | 15/18 (83.33%) |
+
+Unsupported known fine targets remain in the first denominator. Neither column
+is a deployment result: unmatched/unknown objects and low-confidence coarse
+misses require separate accounting.
+
+**No parent met the predefined validation acceptance gate** of at least five
+accepted known-fine predictions with empirical precision at least 90%. Therefore
+zero fine parents were enabled and every displayed result retained its coarse
+label. The frozen test detector scores stayed at Recall 73.17% and AP50 82.52%,
+as expected from exact preservation of the saved predictions. Three fresh
+validation canaries confirmed bitwise original COCO80/coarse6 outputs before and
+after refinement and equality with their saved coarse reference. This is not a
+full COCO regression test. The experiment demonstrates the preservation/fallback
+mechanism; **it does not demonstrate improved deployable fine recognition**.
+
+[Recorded refinement results and artifact hashes](hierarchical_pilot_2026-11-05.json)
+contain the conditional metrics, zero-acceptance result and scope limits without
+private paths or source images.
+
+CPU-only regression tests exercise parent masking, gradients, unsupported-GT
+calibration, coarse fallback and exact coarse-output preservation with dummy
+features; they require no pretrained model downloads:
+
+```powershell
+python -m pytest bento_research/test_hierarchical_refiner.py -q
+```
 
 ## Research limits and next comparisons
 
