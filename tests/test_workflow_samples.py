@@ -30,7 +30,17 @@ def test_all_published_templates_define_relevant_sample_guidance():
         assert sample["expected"] and sample["title"]
         assert sample["kind"] in {"image", "video"}
         assert sample["available"] is False and sample["media_id"] is None and sample["url"] is None
-        assert value["recommended_options"]["frame_stride"] == 1
+        expected_stride = 3 if value["id"].startswith("handwashing-") else 1
+        assert value["recommended_options"]["frame_stride"] == expected_stride
+
+
+def test_handwashing_defaults_cover_complete_22_second_clip():
+    document = samples.with_samples(templates(), [])
+    for ident in ("handwashing-hybrid", "handwashing-detection-mask"):
+        options = template(document, ident)["recommended_options"]
+        assert options["max_frames"] * options["frame_stride"] >= 660
+        # COCO17 ST-GCN++ needs at least 32 observations in its 4 s window.
+        assert 30 / options["frame_stride"] * 4 >= 32
 
 
 def test_matching_uses_content_not_name_and_never_publishes_local_paths(tmp_path, monkeypatch):

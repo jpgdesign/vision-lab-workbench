@@ -1,4 +1,4 @@
-"""Plan, download or verify the three optional workflow model assets.
+"""Plan, download or verify optional workflow model assets.
 
 Default prints a plan only. --download fetches pinned official URLs and verifies
 byte counts/SHA256 before publishing files; --verify never changes any file.
@@ -51,7 +51,7 @@ def load_manifest(path=MANIFEST):
             if (not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", ".."} or name in names
                     or type(item["bytes"]) is not int or item["bytes"] <= 0
                     or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])
-                    or url.scheme != "https" or url.hostname not in {"github.com", "download.openmmlab.com", "huggingface.co"}
+                    or url.scheme != "https" or url.hostname not in {"github.com", "download.openmmlab.com", "huggingface.co", "storage.googleapis.com"}
                     or url.username or url.password):
                 raise ValueError("Invalid pinned asset declaration")
             names.add(name)
@@ -135,7 +135,7 @@ def download_one(entry, target, *, replace_invalid=False, restart_partial=False,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", nargs="+", default=["pose", "skeleton", "relation"], help="pose, skeleton, relation, or exact model IDs")
+    parser.add_argument("--models", nargs="+", default=["pose", "skeleton", "relation"], help="pose, skeleton, relation, hand, mask, or exact model IDs; default: pose skeleton relation")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "models", help="Asset root; default project models/; model subfolders are created inside")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--download", action="store_true", help="Download only selected official pinned assets")
@@ -146,7 +146,7 @@ def main(argv=None):
     manifest = load_manifest()
     choices = {key: model for model in manifest["models"] for key in (model["id"], model["alias"])}
     if any(name not in choices for name in args.models):
-        parser.error("Unknown model; choose pose, skeleton, relation or a manifest model ID")
+        parser.error("Unknown model; choose pose, skeleton, relation, hand, mask or a manifest model ID")
     selected = list({choices[name]["id"]: choices[name] for name in args.models}.values())
     root = args.output_dir.expanduser().resolve()
     if not args.download and not args.verify:

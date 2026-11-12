@@ -119,4 +119,39 @@ def templates():
                 ("input","frame","histogram","frame"),("histogram","frame","out","frame"),
                 ("histogram","actions","rule","actions"),("histogram","actions","out","actions"),("rule","events","out","events")], [SAFETY, OPENCV]),
     ])
+    values.extend([
+        build("live-office-crossing", "辦公室攝影機：進來／出去＋坐姿", "中央線左→右＝出去、右→左＝進來。『認真』是自訂的坐姿規則；桌子遮擋腿部時會顯示姿態不明。可在節點設定拖拉中央線。", [
+            ("input","source",30,120,{}),("pose","pose",350,120,{}),
+            ("track","tracker",670,120,{}),("office","office_monitor",990,120,{}),("out","output",1330,120,{})], [
+                ("input","frame","pose","frame"),("pose","poses","track","observations"),
+                ("track","tracks","office","tracks"),("input","frame","out","frame"),
+                ("track","tracks","out","observations"),("office","actions","out","actions"),
+                ("office","events","out","events")], [("Ultralytics Pose", "https://docs.ultralytics.com/tasks/pose/")]),
+        build("handwashing-hybrid", "洗手分析：手部＋遮罩＋影片＋人體骨架", "使用指定影片 22–44 秒。MediaPipe 手部偵測→SAM 真實遮罩，X3D 分類片段；YOLO 人體骨架→ST-GCN++ 分開提供搓手線索。近拍缺全身時人體分支為未知，無沖洗證據不判定流程完成。可切換即時攝影機。", [
+            ("input","source",20,300,{}),("hands","hand_landmarks",340,30,{}),
+            ("mask","prompt_mask",660,30,{}),("rgb","video_action",340,360,{"model_id":"x3d_l","every_seconds":1.,"min_score":.15}),
+            ("pose","pose",340,700,{}),("track","tracker",660,700,{}),
+            ("skeleton","skeleton_action",980,700,{}),("wash","handwash",1310,250,{}),("out","output",1650,250,{})], [
+                ("input","frame","hands","frame"),("input","frame","mask","frame"),("hands","poses","mask","objects"),
+                ("input","frame","rgb","frame"),("input","frame","pose","frame"),
+                ("pose","poses","track","observations"),("track","tracks","skeleton","tracks"),
+                ("hands","poses","wash","hands"),("mask","detections","wash","masks"),
+                ("rgb","actions","wash","actions"),("skeleton","actions","wash","actions"),
+                ("input","frame","out","frame"),("hands","poses","out","observations"),
+                ("mask","detections","out","observations"),("track","tracks","out","observations"),
+                ("wash","actions","out","actions"),("rgb","actions","out","actions"),
+                ("skeleton","actions","out","actions"),("wash","events","out","events")], [
+                    ("指定影片：正確洗手步驟（22–44秒）", "https://www.youtube.com/watch?v=8wiBWkgZ3iI&t=22s"),
+                    ("MediaPipe Hand Landmarker", "https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker"),
+                    ("Meta SAM 2", "https://github.com/facebookresearch/sam2"), PYSKL, MMACTION]),
+        build("handwashing-detection-mask", "洗手場景：文字偵測＋SAM 遮罩", "Grounding DINO 依 hand／sink／faucet 提示找物件，再由 SAM 分割。顯示物件與形狀，不把單張偵測當成已完成洗手；可與融合流程的模型分支比較。", [
+            ("input","source",30,160,{}),("detect","detector",350,160,{"model_id":"grounding_dino_base","prompt":"hand . sink . faucet . soap .","conf":.25,"max_det":6}),
+            ("mask","prompt_mask",700,160,{"max_objects":6,"every_seconds":1.}),
+            ("out","output",1060,160,{})], [
+                ("input","frame","detect","frame"),("input","frame","mask","frame"),
+                ("detect","detections","mask","objects"),("input","frame","out","frame"),
+                ("mask","detections","out","observations"),("detect","detections","out","observations")], [
+                    ("Grounding DINO", "https://github.com/IDEA-Research/GroundingDINO"),
+                    ("SAM 2", "https://github.com/facebookresearch/sam2")]),
+    ])
     return {"templates": values}

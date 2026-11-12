@@ -14,6 +14,12 @@ from urllib.parse import quote
 
 
 SAMPLES = {
+    "handwashing_user_clip": {
+        "title": "指定洗手影片 · 原片 22–44 秒", "kind": "video", "bytes": 5216293,
+        "sha256": "ec4fbd5de689af48d6e19f6f0dc176ee6323c178268248b228da0f6a3b729fce",
+        "source_url": "https://www.youtube.com/watch?v=8wiBWkgZ3iI&t=22s",
+        "license": "RTI／行政院防疫宣導影片；未確認再散布授權，僅解析使用者本機副本，不隨工具散布。",
+        "origin": "user_provided", "notes": "22.022 秒手部近拍；搓手到擦乾，不能當作完整進入、沖洗、離開流程真值。"},
     "zoneguard": {
         "title": "ZoneGuard 原專案 · 廠區走道", "kind": "video", "bytes": 8129752,
         "sha256": "0c64fdbeb2a49c252600aeac56290b6d5e3927021cba4abf789c8095e84c3e54",
@@ -56,6 +62,9 @@ SAMPLES = {
 # Each recommendation states what can actually be inspected. No unrelated
 # available image is silently substituted for a temporal or safety sample.
 TEMPLATE_SAMPLES = {
+    "live-office-crossing": ([], "使用你的辦公室攝影機；左到右出去、右到左進來。坐姿需看得到腿部，這個桌面視角可能遮擋；中央線可拖拉。"),
+    "handwashing-hybrid": (["handwashing_user_clip"], "比較實際手部關節、SAM 遮罩、RGB washing hands 分數與人體骨架可見性；缺證據時保留未知，沒有完整流程真值。"),
+    "handwashing-detection-mask": (["handwashing_user_clip"], "比較文字提示物件框與實際遮罩；手重疊可能只找到一個區域，單張影像不代表動作完成。"),
     "live-multi-model": (["ntu", "zoneguard"], "同一畫面疊上 YOLO26、YOLOv12 與人體關節；可切換 USB／虛擬攝影機或 VDO.Ninja，並替換個別偵測節點的微調權重。"),
     "zone-guard": (["zoneguard", "traffic"], "觀察人員追蹤 ID、進出與停留；先讓區域涵蓋人員會經過的位置。"),
     "skeleton-actions": (["ntu"], "觀察同人骨架、累積至少 32 幀後的 NTU120 動作分數；短片沒有設定類別時可以沒有事件。"),
@@ -121,8 +130,12 @@ def with_samples(document, entries):
             sample.update(title="自備場景影片／即時鏡頭", kind="video", origin="user_required",
                           source_url="https://github.com/nusRying/ai-safety-monitoring#quick-start",
                           notes="參考專案未提交原始 PPE／跌倒影片；不會用作品集截圖或無關素材冒充輸入範例。")
+            if template["id"] == "live-office-crossing":
+                sample.update(source_url="", notes="使用自己的辦公室鏡頭；左右方向以送入模型的畫面為準。桌面遮擋腿部時，坐姿可能無法判定。")
         elif entry is None:
             sample["notes"] += " 此素材尚未匯入本機；可從來源頁取得後上傳，或選用自己的相符素材。"
         template["sample"] = sample
         template["recommended_options"] = {"frame_stride": 1, "max_frames": 300, "max_side": 960 if template["id"] == "skeleton-actions" else 640}
+        if template["id"].startswith("handwashing-"):
+            template["recommended_options"] = {"frame_stride": 3, "max_frames": 240, "max_side": 1280}
     return result

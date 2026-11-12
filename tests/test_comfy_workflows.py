@@ -169,7 +169,7 @@ def test_converter_matches_real_plugin_socket_types_and_widget_order():
         assert widgets == (list(SOURCE_WIDGETS) if kind == "source" else [p["key"] for p in definition["params"]])
 
 
-def test_export_cli_uses_sample_metadata_and_backs_up_edited_workflow(tmp_path, monkeypatch):
+def test_export_cli_uses_sample_metadata_and_preserves_edited_workflow(tmp_path, monkeypatch):
     import export_workflow_templates as cli
     entry = next(item for item in templates()["templates"] if item["id"] == "zone-guard")
     entry.update(sample={"media_id": "clip", "title": "走道", "origin": "original_project"},
@@ -186,10 +186,21 @@ def test_export_cli_uses_sample_metadata_and_backs_up_edited_workflow(tmp_path, 
     doc = json.loads(path.read_text(encoding="utf-8"))
     source = next(node for node in doc["nodes"] if node["type"] == "VisionWB_source")
     assert source["widgets_values"] == ["media", "clip | 廠區.mp4", "auto", 1, 252, 640]
-    path.write_text("user edited workflow", encoding="utf-8")
-    cli.export_templates("http://127.0.0.1:8765", tmp_path)
-    assert next((tmp_path / ".backups").rglob(path.name)).read_text(encoding="utf-8") == "user edited workflow"
-    assert json.loads(path.read_text(encoding="utf-8"))["version"] == .4
+    doc["nodes"][0]["pos"] = [1250, 750]
+    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    user_bytes = path.read_bytes()
+    replacement = Path(cli.export_templates("http://127.0.0.1:8765", tmp_path)[0])
+    assert replacement != path
+    assert path.read_bytes() == user_bytes
+    generated = json.loads(replacement.read_text(encoding="utf-8"))
+    assert generated["version"] == .4
+    assert generated["nodes"][0]["pos"] != [1250, 750]
+    assert generated["groups"][0]["title"] == entry["name"]
+    manifest = json.loads((tmp_path / cli.MANIFEST).read_text(encoding="utf-8"))
+    assert path.name in manifest["preserved_edited_or_unmanaged_files"]
+    assert manifest["entries"][entry["id"]]["filename"] == replacement.name
+    assert cli.export_templates("http://127.0.0.1:8765", tmp_path) == [str(replacement)]
+    assert path.read_bytes() == user_bytes
 
 
 def test_export_cli_rejects_remote_resource_endpoint(tmp_path):

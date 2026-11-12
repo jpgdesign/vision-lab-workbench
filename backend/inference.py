@@ -189,7 +189,7 @@ def draw_predictions(rgb, predictions, title=None):
         box = prediction["box"]
         color = colors[index % len(colors)]
         draw.rectangle(box, outline=color, width=max(2, size // 8))
-        label = f"{prediction['label']} {prediction['score']:.2f}"
+        label = str(prediction['label']) if prediction.get('score_kind') == 'presence_gate_not_probability' else f"{prediction['label']} {prediction['score']:.2f}"
         x, y = max(0, box[0]), max(0, box[1] - size - 6)
         text_box = draw.textbbox((x + 4, y + 2), label, font=font)
         draw.rectangle((x, y, text_box[2] + 4, text_box[3] + 3), fill="#10221c")

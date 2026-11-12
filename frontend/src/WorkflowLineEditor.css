@@ -1,0 +1,9 @@
+.wf-line-surface{min-height:100px;cursor:ew-resize;background:linear-gradient(90deg,#182b31,#14251b)}
+.wf-line-surface>svg{outline-offset:-3px}
+.wf-line-surface>svg:focus-visible{outline:2px solid #c8e9d4}
+.wf-line-surface>svg[aria-disabled=true]{cursor:default}
+.wf-line-band{fill:#e8cc5e28;pointer-events:none}
+.wf-line-guide{stroke:#f4d45d;stroke-width:3;pointer-events:none}
+.wf-line-surface circle{fill:#f4d45d;stroke:#192b20;stroke-width:2;pointer-events:none}
+.wf-line-text{font-family:system-ui,sans-serif;font-size:42px;fill:#fff;stroke:#122018;stroke-width:9;paint-order:stroke;pointer-events:none}
+.wf-line-range input[type=range]{width:100%;padding:0;accent-color:#f4d45d}

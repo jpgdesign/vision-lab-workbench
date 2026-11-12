@@ -22,7 +22,7 @@ python launch.py
 | ComfyUI Python 環境 | 新安裝位於 `.tools/comfyui-venv/`，與工作檯 `.venv/` 分開 |
 | 模型執行環境 | `VisionWB_*` 模型仍由工作檯的 GPU／CPU 環境執行 |
 | 自訂節點 | 安裝到 ComfyUI 的 `custom_nodes/vision_workbench/`；變更既有檔案前備份 |
-| 範例 | 啟動工作檯後匯出 15 個流程至 ComfyUI 的 `user/default/workflows/VisionWorkbench/`；包含目前電腦登錄的素材與模型 ID |
+| 範例 | 啟動工作檯後匯出 18 個中文名稱流程至 ComfyUI 的 `user/default/workflows/VisionWorkbench/`；包含目前電腦登錄的素材與模型 ID |
 | 本機設定 | 保存於專案 `runtime/comfyui.json`，不加入 Git 或匯出的工作流 |
 | 啟動 | `python launch.py` 沿用已在運行的相容服務，或啟動兩個服務並開啟 ComfyUI |
 
@@ -30,7 +30,9 @@ python launch.py
 
 GitHub ZIP／Git clone 不包含 ComfyUI 本體、Python 環境或大型模型權重；執行 `--install` 才取得 ComfyUI 與套件。請預留環境、下載暫存及模型所需空間；套件下載量會隨平台而異，模型權重仍需依各自的授權另外取得。來源下載、安裝或環境驗證失敗時會回報原因，不會將未完成安裝當作可啟動設定。
 
-啟動後，在節點搜尋輸入 `Vision Workbench` 即可找到 31 種原生節點；從 `Vision Workbench` 側欄或工作流檔案清單載入 15 個預設流程。工作檯網址為 `http://127.0.0.1:8765/`，ComfyUI 為 `http://127.0.0.1:8188/`，兩者只監聽本機。
+啟動後，在節點搜尋輸入 `Vision Workbench` 即可找到 35 種原生節點；從 `Vision Workbench` 側欄或工作流檔案清單載入 18 個預設流程。工作檯網址為 `http://127.0.0.1:8765/`，ComfyUI 為 `http://127.0.0.1:8188/`，兩者只監聽本機。
+
+工作流檔名與畫布標題包含中文名稱，方便識別用途。重新匯出會保留修改過或無法確認來源的檔案，另外建立新版預設；確認未修改的舊產生檔才會移至 `.backups`。新增的 [辦公室跨線／坐姿規則](office-camera.md) 與 [洗手兩種模板](handwashing-models.md) 都可使用即時來源。手部骨架與 SAM 遮罩節點目前僅提供推論，沒有微調接頭。
 
 ### 沿用其他位置的 ComfyUI
 

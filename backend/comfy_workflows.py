@@ -122,7 +122,7 @@ def _prepare(graph, name, source_mode, media_id, options, resources):
                       "target": identifiers[b["id"]], "target_slot": target_slot, "target_name": slot_name,
                       "type": outputs[source_slot]["type"]})
     widget_values = {node["id"]: _widgets(node, source, resources) for node in graph["nodes"]}
-    return graph, identifiers, links, widget_values, checked["plan"]["order"], source, name or "Vision Workbench"
+    return graph, identifiers, links, widget_values, checked["plan"]["order"], source, name or "視覺應用工作流"
 
 
 def to_api_prompt(graph, name="", source_mode="media", media_id="", options=None, *, resources=None):
@@ -166,11 +166,16 @@ def convert_workflow(graph, name="", source_mode="media", media_id="", options=N
                              "widgets_values": list(widgets[node["id"]].values()),
                              "color": "#263c32", "bgcolor": "#1b2922"})
     stable = json.dumps({"name": name, "graph": graph, "source": source}, ensure_ascii=False, sort_keys=True)
+    left = min(node["pos"][0] for node in canvas_nodes) - 40
+    top = min(node["pos"][1] for node in canvas_nodes) - 90
+    right = max(node["pos"][0] + node["size"][0] for node in canvas_nodes) + 40
+    bottom = max(node["pos"][1] + node["size"][1] for node in canvas_nodes) + 40
     return {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, "vision-workbench:" + stable)), "revision": 0,
             "last_node_id": max(identifiers.values()), "last_link_id": len(links),
             "nodes": canvas_nodes,
             "links": [[edge["id"], edge["source"], edge["source_slot"], edge["target"], edge["target_slot"], edge["type"]] for edge in links],
-            "groups": [], "config": {}, "version": .4,
+            "groups": [{"id": 1, "title": name, "bounding": [left, top, right - left, bottom - top],
+                        "color": "#355b49", "font_size": 26, "flags": {}}], "config": {}, "version": .4,
             "extra": {"ds": {"scale": .65, "offset": [40, 40]}, "vision_workbench": {
                 "name": name, "source_mode": source["source_mode"], "graph_version": 1,
                 "node_ids": {str(value): key for key, value in identifiers.items()}}}}

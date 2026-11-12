@@ -82,12 +82,18 @@ NODE_TYPES = [
 ]
 from .workflow_opencv_catalog import opencv_catalog
 from .workflow_cv_rules import cv_rules_catalog
+from .workflow_office import office_catalog, validate_office_params
+from .workflow_handwash import handwash_catalog, validate_handwash_params
 
 NODE_TYPES.extend(opencv_catalog(node, param, port))
 NODE_TYPES.extend(cv_rules_catalog(node, param, port))
+NODE_TYPES.extend(office_catalog(node, param, port))
+NODE_TYPES.extend(handwash_catalog(node, param, port))
 CATALOG = {item["type"]: item for item in NODE_TYPES}
 ASSETS = {"yolo26n_pose": ("yolo26n_pose", "yolo26n-pose.pt"), "stgcnpp_ntu120": ("stgcnpp_ntu120", "stgcnpp_ntu120_hrnet_j.pth"),
-          "relateanything_convnext_large": ("relateanything_convnext_large", "relateanything.onnx")}
+          "relateanything_convnext_large": ("relateanything_convnext_large", "relateanything.onnx"),
+          "mediapipe_hand_landmarker": ("mediapipe_hand_landmarker", "hand_landmarker.task"),
+          "sam2_1_tiny": ("sam2_1_tiny", "sam2.1_t.pt")}
 
 
 def asset_path(model_id, app_root=None):
@@ -186,6 +192,11 @@ def validate_graph(graph):
             if any(e == {**edge, "id": e["id"]} for e in incoming[b]): raise ValueError("不能重複連接相同插槽。")
             incoming[b].append(edge); outgoing[a].append(edge)
         for ident, item in nodes.items():
+            if item["type"] in {"office_monitor", "handwash"}:
+                try:
+                    (validate_office_params if item["type"] == "office_monitor" else validate_handwash_params)(item["params"])
+                except (ValueError, TypeError, KeyError) as exc:
+                    errors.append(f"{ident} 規則參數不正確：{exc}")
             if item["type"].startswith("cv_"):
                 from .workflow_opencv import OPENCV_KINDS, validate_opencv_params
                 from .workflow_cv_rules import CV_RULE_KINDS, validate_cv_rule_params

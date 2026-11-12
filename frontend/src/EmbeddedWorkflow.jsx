@@ -17,7 +17,7 @@ export default function EmbeddedWorkflow({ workflowId, ...shared }) {
     setError('');
     Promise.all([api(`/comfy/workflows/${workflowId}`), api('/workflows/catalog')]).then(([value, catalog]) => {
       if (!alive) return;
-      const labels = value.graph.nodes.filter(node => ['detector', 'pose', 'skeleton_action', 'video_action', 'embedding', 'relation'].includes(node.type)).map(node => {
+      const labels = value.graph.nodes.filter(node => ['detector', 'pose', 'skeleton_action', 'video_action', 'embedding', 'relation', 'hand_landmarks', 'prompt_mask'].includes(node.type)).map(node => {
         const label = catalog.node_types.find(spec => spec.type === node.type)?.label || node.type;
         return `${label}${node.params.model_id ? ` · ${node.params.model_id}` : ''}${node.params.checkpoint_id ? ' · 微調權重' : ''}`;
       });

@@ -1,2 +1,4 @@
 # Optional local relation adapter; CPU provider only. No PyTorch/CUDA replacement.
 onnxruntime==1.23.2
+# 21-point hand landmark task. Pin avoids replacing the existing OpenCV build.
+mediapipe==0.10.31

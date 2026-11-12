@@ -188,7 +188,7 @@ async function loadTemplate(id, sourceMode = "media") {
 
 function createTemplatePanel() {
   const panel = element("section", null, "vwb-panel");
-  panel.append(element("h3", "Vision Workbench 範例"), element("p", "沿用已下載模型、微調權重與素材。選擇範例和來源，載入後按 ComfyUI 的執行。"));
+  panel.append(element("h3", "視覺應用工作檯・中文工作流"), element("p", "沿用已下載模型、微調權重與素材。選擇中文範例和來源，畫布上方會顯示專案名稱；載入後按 ComfyUI 的執行。"));
   const status = element("p", "正在連接本機工作檯…", "vwb-panel-status");
   const select = element("select");
   select.ariaLabel = "工作流範例";
@@ -222,7 +222,7 @@ function createTemplatePanel() {
   });
   panel.append(status, select, description, source, load, refresh,
     element("p", "即時來源：執行後，在輸出節點內先連接攝影機，再按開始流程。攝影機與 VDO 連線資訊保留在瀏覽器，不會寫進工作流。"),
-    externalLink("開啟 Vision Workbench ↗", BASE));
+    externalLink("開啟視覺應用工作檯 ↗", BASE));
   refresh.click();
   return panel;
 }
@@ -231,7 +231,7 @@ app.registerExtension({
   name: "VisionWorkbench.NativeBridge",
   async setup() {
     const style = element("link"); style.rel = "stylesheet"; style.href = new URL("./vision_workbench.css", import.meta.url).href; document.head.append(style);
-    app.extensionManager.registerSidebarTab({id: "vision-workbench", icon: "pi pi-eye", title: "Vision Workbench", tooltip: "Vision Workbench 範例與模型", type: "custom", render: el => { el.replaceChildren(createTemplatePanel()); }});
+    app.extensionManager.registerSidebarTab({id: "vision-workbench", icon: "pi pi-eye", title: "視覺應用工作檯", tooltip: "中文工作流、模型與即時攝影機", type: "custom", render: el => { el.replaceChildren(createTemplatePanel()); }});
     api.addEventListener("vision_workbench.progress", event => {
       const detail = event.detail;
       const node = app.graph?.getNodeById(detail.node);

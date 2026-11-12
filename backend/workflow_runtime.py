@@ -17,6 +17,9 @@ from .workflow_tracking import TrackerNode
 from .workflow_frames import IDENTITY, coordinate_space, route_inputs
 from .workflow_opencv import OPENCV_KINDS, OpenCVNode
 from .workflow_cv_rules import CV_RULE_KINDS, CVRuleNode
+from .workflow_office import OFFICE_KINDS, OfficeNode
+from .workflow_handwash import HandwashNode
+from .workflow_hands import HAND_MODEL_KINDS, HandModelNode
 
 MAX_FRAME_RECORDS = 20_000
 MAX_EVENT_RECORDS = 100_000
@@ -122,9 +125,11 @@ def render_output(frame, inputs, recent_events):
         if len(polygon) >= 3:
             draw.line([tuple(p) for p in polygon] + [tuple(polygon[0])], fill=(140,246,190,230), width=2)
         joints = item.get("keypoints", [])
-        if len(joints) != 17: continue
+        if len(joints) not in (17, 21): continue
+        edges = bones if len(joints) == 17 else [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),
+                  (5,9),(9,10),(10,11),(11,12),(9,13),(13,14),(14,15),(15,16),(13,17),(0,17),(17,18),(18,19),(19,20)]
         valid = lambda j: len(j) >= 3 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in j[:3]) and j[2] >= .3
-        for a, b in bones:
+        for a, b in edges:
             if valid(joints[a]) and valid(joints[b]):
                 draw.line([tuple(joints[a][:2]), tuple(joints[b][:2])], fill=(240,207,112,230), width=2)
         for joint in joints:
@@ -141,7 +146,8 @@ def render_output(frame, inputs, recent_events):
             draw.line(points, fill=(145,232,193,220), width=2)
         else:
             draw.polygon(points, fill=(111,180,160,25), outline=(145,232,193,220), width=2)
-        draw.text(points[0], f"{overlay.get('label', '')} · {overlay.get('count', 0)}", font=font, fill=(201,255,221,255), stroke_width=1, stroke_fill=(0,0,0,255))
+        label = str(overlay.get('label', '')) + (f" · {overlay['count']}" if 'count' in overlay else '')
+        draw.text(points[0], label, font=font, fill=(201,255,221,255), stroke_width=1, stroke_fill=(0,0,0,255))
     for relation in relations[:20]:
         a, b = relation.get("subject_box"), relation.get("object_box")
         if a is None or b is None: continue
@@ -199,6 +205,8 @@ class WorkflowEngine:
             if kind in RULE_KINDS: instance = RuleNode(kind, params, ident)
             elif kind in OPENCV_KINDS: instance = OpenCVNode(kind, params, ident)
             elif kind in CV_RULE_KINDS: instance = CVRuleNode(kind, params, ident)
+            elif kind in OFFICE_KINDS: instance = OfficeNode(kind, params, ident)
+            elif kind == "handwash": instance = HandwashNode(params, ident)
             elif kind == "tracker": instance = TrackerNode(params, ident)
             elif kind == "vlm": instance = RemoteNode(params, self.request["runtime_path"])
             else:
@@ -208,7 +216,8 @@ class WorkflowEngine:
                 if self.device is None:
                     from .inference import resolve_device
                     self.device = resolve_device(self.request.get("params", {}).get("device", "auto"))
-                instance = self.model_factory(kind, params, self.request.get("resolved_nodes", {}).get(ident, {}), device=self.device)
+                factory = HandModelNode if kind in HAND_MODEL_KINDS else self.model_factory
+                instance = factory(kind, params, self.request.get("resolved_nodes", {}).get(ident, {}), device=self.device)
             self.instances[ident] = instance
         return self.instances[ident]
 
@@ -253,7 +262,7 @@ class WorkflowEngine:
                     result = self._instance(node).process(inputs, node_frame)
                     for value in result.values():
                         value.setdefault("fresh", True)
-                        if kind in {"detector", "pose"}:
+                        if kind in {"detector", "pose", "hand_landmarks", "prompt_mask"}:
                             model_name = node["params"].get("model_id") or self.request.get("resolved_nodes", {}).get(ident, {}).get("model_id") or kind
                             for item in value.get("items", []) + value.get("display_items", []):
                                 item.setdefault("producer_node", ident)

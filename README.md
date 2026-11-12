@@ -13,7 +13,8 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 ## 功能
 
 - 圖片／影片推論畫布：新增區塊、拖曳排列、調整參數、比較預訓練與微調權重。
-- 多模型應用工作檯：連接 OpenCV 影像處理、偵測、骨架、追蹤、動作、視覺表徵、物件關係與規則節點；提供十五個可修改模板、流程驗證及圖片／影片／即時串流執行。完整安裝會準備 ComfyUI，透過 31 種原生自訂節點使用相同資源。
+- 多模型應用工作檯：連接 OpenCV 影像處理、偵測、骨架、追蹤、動作、視覺表徵、物件關係與規則節點；提供十八個可修改模板、流程驗證及圖片／影片／即時串流執行。完整安裝會準備 ComfyUI，透過 35 種原生自訂節點使用相同資源。
+- 辦公室攝影機模板：可拖拉中央線，依同一人物的跨線方向記錄進來／出去；可見坐姿規則使用自訂名稱，遮擋時保留不明。另有洗手場景的文字偵測＋SAM 遮罩，以及手部／遮罩／RGB 動作／人體骨架融合兩個模板。
 - 推論區塊依內容自動增高，結果、下載連結與操作按鈕不會被固定高度裁切；預設寬度隨畫布調整，手動尺寸可按區塊標題上的「自動調整區塊尺寸」還原。
 - 素材若曾用於本機已完成工作的訓練集，選取框與勾號顯示紅色，並標示「已用於訓練」。以檔案內容比對，可辨識改名或重新上傳的相同檔案；只用於驗證或推論的素材不會因此標紅。
 - 推論模型保留在記憶體中，換圖片／影片或調整辨識參數時可直接重用；結果顯示是否重用、載入時間與總處理時間。
@@ -46,6 +47,8 @@ Vision Lab 提供可並排的推論畫布、每個模型獨立的參數、即時
 | SlowFast R101 8×8 (`slowfast_r101_8x8`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | VideoMAE V2 Giant K710 (`videomaev2_giant_k710`) | 影片分類 | 滾動片段分類 | 支援 | Video CSV |
 | DINOv3 ViT-7B (`dinov3_7b`) | 原始視覺表徵；微調分類頭的影像／逐幀分類 | 應用工作流的 embedding 節點 | 分類接頭已接入；擴充需既有分類 checkpoint | ImageFolder |
+
+MediaPipe Hand Landmarker (`mediapipe_hand_landmarker`) 與 SAM 2.1 Tiny (`sam2_1_tiny`) 是新增的**應用工作流推論節點**，分別輸出每手 21 點骨架與提示式遮罩；兩者目前**沒有接入微調或類別擴充**。它們不替代上表的偵測／分類訓練接頭，細節見 [洗手模型說明](docs/handwashing-models.md)。
 
 在推論比較或即時攝影機選擇 YOLOv12、YOLO26、RF-DETR 後，可用「任務」切換物件偵測／實例分割。兩種任務使用不同權重，切換會清除不相容的 checkpoint 與舊結果。分割顯示半透明遮罩與輪廓，下載的 JSON／JSONL 包含原圖尺寸的 COCO RLE 遮罩；畫面狀態僅保留面積等摘要。偵測模型不能直接變成分割模型；現有便當 bbox 資料也不能直接作為分割監督標註。RF-DETR 的分割 2XL 使用 Apache-2.0 權重與 `rfdetr` 套件，與偵測 2XL 的 PML／`rfdetr-plus` 不同。
 
@@ -139,7 +142,7 @@ python launch.py
 
 Windows 首次安裝也可雙擊 **`INSTALL_AND_START.cmd`**，自動安裝並開啟；之後雙擊 **`START.cmd`** 即可。仍須先安裝上述 Python 與 Node.js，安裝過程需要網路及下載空間。
 
-完整安裝預設包含 ComfyUI：先尋找已設定或常見位置的既有安裝；找不到時，從 [ComfyUI 官方專案](https://github.com/Comfy-Org/ComfyUI)下載固定版本，核對 SHA256，放入本專案的 `.tools/ComfyUI/`，另建 `.tools/comfyui-venv/`。安裝器會接入本專案節點；`python launch.py` 隨後啟動／沿用兩個本機服務，匯入 15 個範例並開啟 ComfyUI。工作檯仍可從 <http://127.0.0.1:8765/> 使用，ComfyUI 位於 <http://127.0.0.1:8188/>。
+完整安裝預設包含 ComfyUI：先尋找已設定或常見位置的既有安裝；找不到時，從 [ComfyUI 官方專案](https://github.com/Comfy-Org/ComfyUI)下載固定版本，核對 SHA256，放入本專案的 `.tools/ComfyUI/`，另建 `.tools/comfyui-venv/`。安裝器會接入本專案節點；`python launch.py` 隨後啟動／沿用兩個本機服務，匯入 18 個範例並開啟 ComfyUI。工作檯仍可從 <http://127.0.0.1:8765/> 使用，ComfyUI 位於 <http://127.0.0.1:8188/>。
 
 GitHub 的 ZIP／Git clone 包含安裝工具與整合程式；**ComfyUI 本體與環境依賴是在執行安裝器時下載**，沒有將大型環境塞進原始碼包。已存在的 ComfyUI 會沿用其 Python 環境，不會更新其核心或替換 PyTorch；可用 `--comfy-root PATH --comfy-python PATH` 明確指定其他安裝。
 
@@ -178,24 +181,29 @@ python setup.py --install --with-workflows
 python download_workflow_models.py
 python download_workflow_models.py --download --models pose skeleton relation
 python download_workflow_models.py --verify
+# 洗手工作流另外需要手部與遮罩權重；不會隨上面的預設清單自動下載
+python download_workflow_models.py --download --models hand mask
+python download_workflow_models.py --verify --models hand mask
 python launch.py
 ```
 
-`--with-workflows` 加入固定版本 `onnxruntime==1.23.2` 的 CPU provider；`full` 與 ComfyUI 一起安裝時會自動加入，不替換可用的 PyTorch／CUDA。原有偵測器仍需其推論依賴與權重；姿態與骨架需要 PyTorch，姿態另用 Ultralytics。Windows 的 ONNX Runtime 需要相容的 Microsoft Visual C++ 2015–2022 x64 Runtime；若缺少，關係節點會回報錯誤，其他本機節點仍可使用。
+`--with-workflows` 加入固定版本 `onnxruntime==1.23.2` 的 CPU provider 與 `mediapipe==0.10.31` 手部依賴；`full` 與 ComfyUI 一起安裝時會自動加入，不替換可用的 PyTorch／CUDA。原有偵測器仍需其推論依賴與權重；姿態與骨架需要 PyTorch，姿態與 SAM 另用 Ultralytics。Windows 的 ONNX Runtime 需要相容的 Microsoft Visual C++ 2015–2022 x64 Runtime；若缺少，關係節點會回報錯誤，其他本機節點仍可使用。MediaPipe 官方 Windows wheel 的標籤問題及已驗證環境見 [依賴說明](docs/handwashing-models.md#依賴與裝置)。
 
 | 應用模型 | 下載大小 | 官方來源與用途 | 授權 |
 |---|---:|---|---|
 | YOLO26n Pose | 7.88 MB | [官方權重](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-pose.pt)；每人 COCO 17 關節 | Ultralytics AGPL-3.0／原提供者商業方案 |
 | ST-GCN++ NTU120 XSub HRNet Joint | 5.92 MB | [PYSKL](https://github.com/kennymckormick/pyskl) · [官方權重](https://download.openmmlab.com/mmaction/pyskl/ckpt/stgcnpp/stgcnpp_ntu120_xsub_hrnet/j.pth)；固定 NTU120 動作分類 | 程式 Apache-2.0；權重與 NTU 資料條件依上游 |
 | RelateAnything ConvNeXt-Large | 978.15 MB | [原作者專案](https://github.com/Maelic/RelateAnything) · [固定模型版本](https://huggingface.co/maelic/relsgg-convnext-large/tree/3f320abdb0c579f685815089a08c472ae6928d4f)；ONNX、243 個預先計算的關係詞與設定 | 程式 AGPL-3.0-only 與署名條款；權重另遵循 DINOv3 License |
+| MediaPipe Hand Landmarker Full | 7.82 MB | [Google 固定 v1 權重](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task)；手部偵測與每手 21 點骨架，`--models hand` | Apache-2.0；目前僅推論 |
+| SAM 2.1 Hiera Tiny | 156.01 MB | [Meta 官方固定權重](https://huggingface.co/facebook/sam2.1-hiera-tiny/resolve/de431c4043854a71d8101e17995dfe596bf101a5/sam2.1_hiera_tiny.pt)；物件框提示產生真實遮罩，`--models mask` | 權重 Apache-2.0；Ultralytics runtime AGPL-3.0；目前僅推論 |
 
-三者合計約 **991.94 MB**，不含 Python 依賴、RAM／VRAM。只需要骨架時可使用 `--models pose skeleton`。下載器使用[固定來源、大小與 SHA256 清單](backend/assets/workflow_model_sources.json)，核對已存在的檔案、支援部分下載續傳；發現不同內容不會直接覆蓋，須明確指定 `--replace-invalid`。`--verify` 只核對、不下載。
+原本預設的 `pose skeleton relation` 三者合計約 **991.94 MB**；新增 `hand mask` 兩者合計約 **163.83 MB**，不含 Python 依賴、RAM／VRAM。只需要骨架時可使用 `--models pose skeleton`。下載器使用[固定來源、大小與 SHA256 清單](backend/assets/workflow_model_sources.json)，核對已存在的檔案、支援部分下載續傳；發現不同內容不會直接覆蓋，須明確指定 `--replace-invalid`。`--verify` 只核對、不下載。
 
-預設目錄為 `models/yolo26n_pose/`、`models/stgcnpp_ntu120/` 與 `models/relateanything_convnext_large/`。這三個應用模型也會在專案 `model_weights/`、專案上一層的 `model_weights/` 搜尋相同子目錄。下載器的 `--output-dir` 可更改存放根目錄，但任意外部目錄不會自動加入這三個節點的搜尋範圍；一般偵測／影片模型仍使用原有路徑登錄功能。
+預設目錄為 `models/<模型 ID>/`，例如 `models/yolo26n_pose/`、`models/mediapipe_hand_landmarker/`、`models/sam2_1_tiny/`。這五個選配應用模型也會在專案 `model_weights/`、專案上一層的 `model_weights/` 搜尋相同子目錄。下載器的 `--output-dir` 可更改存放根目錄，但任意外部目錄不會自動加入這五個節點的搜尋範圍；一般偵測／影片模型仍使用原有路徑登錄功能。
 
 ### 使用 ComfyUI 畫布
 
-可在既有 ComfyUI 使用 31 種 `VisionWB_*` 原生自訂節點，串接已登錄的模型、微調權重、OpenCV、追蹤與規則。ComfyUI 與工作檯服務需同時執行；權重及素材依登錄 ID 引用，不需要複製到 ComfyUI。
+可在既有 ComfyUI 使用 35 種 `VisionWB_*` 原生自訂節點，串接已登錄的模型、微調權重、OpenCV、追蹤與規則。ComfyUI 與工作檯服務需同時執行；權重及素材依登錄 ID 引用，不需要複製到 ComfyUI。
 
 一般安裝已自動準備節點與啟動設定：
 
@@ -218,17 +226,20 @@ python install_comfyui.py --comfy-root "<ComfyUI>"
 python export_workflow_templates.py --destination "<ComfyUI>/user/default/workflows/VisionWorkbench"
 ```
 
-15 個範例會出現在 ComfyUI 工作流資料夾，也可從 `Vision Workbench` 側欄載入。已安裝橋接時，可直接開啟[雙模型＋人體骨架攝影機範例](http://127.0.0.1:8188/?vision_workflow=live-multi-model&source=camera)。
+18 個範例會以「序號－中文名稱－流程 ID」出現在 ComfyUI 工作流資料夾，也可從 `Vision Workbench` 側欄載入；畫布上方同時顯示中文專案名稱與用途。重新匯出會保留使用者修改過或無法確認來源的檔案，另外產生新版預設；只有確認未修改的舊產生檔才移至 `.backups`。已安裝橋接時，可直接開啟[雙模型＋人體骨架攝影機範例](http://127.0.0.1:8188/?vision_workflow=live-multi-model&source=camera)。
 
 來源支援圖片／影片，以及攝影機／VDO.Ninja 即時流程。執行後即時檢視器會嵌入輸出節點；選擇攝影機或觀看連結後按下連接、開始，也能將同一來源接到多個模型。載入模板不會自動啟用攝影機。安裝、範例素材、模型選單與接線方式見 [ComfyUI 整合說明](docs/comfyui-integration.md)。
 
 原生應用工作檯也保留：可直接修改節點上的常用參數、雙擊搜尋新增、整理排版、復原／重做、複製多個節點與連線，以及收合／調整側欄。載入示範時會同時選取對應素材；缺少範例時會提示使用自己的素材或攝影機。
 
-### 十五個可修改模板
+### 十八個可修改模板
 
 | 模板 | 主要節點 | 可測試的結果與必要條件 |
 |---|---|---|
 | 同畫面：雙模型＋人體骨架 | 同一來源 → YOLO26／YOLOv12／Pose → 輸出 | 在同一畫面疊加兩種模型與骨架結果；可換微調權重，支援攝影機與 VDO.Ninja |
+| 辦公室攝影機：進來／出去＋坐姿 | Pose → 追蹤 → 中線與坐姿規則 | 左→右記「出去」、右→左記「進來」；中央線可調。坐姿顯示「認真（坐姿規則）」只是自訂名稱；雙腿被桌子遮擋時回報不明，不推論專注程度 |
+| 洗手分析：手部＋遮罩＋影片＋人體骨架 | MediaPipe → SAM／X3D／Pose → ST-GCN++ → 證據融合 | 比較手部位置、真實遮罩與時序動作；近拍缺完整人體骨架時該分支顯示未知，無沖洗證據不判定流程完成 |
+| 洗手場景：文字偵測＋SAM 遮罩 | Grounding DINO → SAM → 輸出 | 依 hand／sink／faucet／soap 提示找物件並分割；單張物件或遮罩不代表正在洗手或衛生合格 |
 | 區域闖入與停留 | 偵測 → 追蹤 → 區域 | 進入、離開、停留、人數超限；需先設定多邊形區域 |
 | 骨架 → 時序動作 → 狀態事件 | Pose → 追蹤 → ST-GCN++ → 條件 | 同一人的 NTU120 動作；至少 30 個有效關節影格 |
 | 姿態轉換／跌倒候選 | Pose → 追蹤 → 幾何姿態 → 條件 | 站立快速轉成躺姿並持續的候選事件；不是訓練式跌倒分類器 |
@@ -245,6 +256,8 @@ python export_workflow_templates.py --destination "<ComfyUI>/user/default/workfl
 | OpenCV 外觀比較 → 變化事件 | HSV 直方圖 → 相似度 → 持續條件 | 不需模型權重；比較前一幀或第一幀，可另接追蹤物件做逐物件比較 |
 
 在原生畫布左側「模板」選擇「載入流程與範例」或「載入流程」，修改模型與參數，從輸出端拖曳到相容的輸入端，再選素材並驗證執行。區域可在影像預覽上編輯；流程可儲存在本機、重新開啟或匯出／匯入 JSON。即時來源沿用攝影機、虛擬攝影機與 VDO.Ninja 輸入；辨識更新速度由整張流程的模型成本決定，不等於來源 FPS。預檢會檢查連線、參數、模型路徑、依賴與關係詞，不會為了驗證流程載入大型模型。
+
+辦公室模板的畫面方向、鏡像、拖拉中線與 ComfyUI 參數見 [辦公室攝影機設定](docs/office-camera.md)。洗手兩模板的模型分工、下載與證據限制見 [洗手工作流模型說明](docs/handwashing-models.md)。洗手參考影片需自行取得及匯入，不隨原始碼散布；載入模板也不會自動開啟攝影機。
 
 ### OpenCV 節點與串接方式
 

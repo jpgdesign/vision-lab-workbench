@@ -148,6 +148,6 @@ export function workflowPortLabel(port) {
 export function workflowTemplateProfile(template) {
   const types = (template.graph?.nodes || []).map(node => node.type);
   const opencv = types.some(type => type.startsWith('cv_'));
-  const needsModel = types.some(type => ['detector', 'pose', 'skeleton_action', 'video_action', 'relation', 'vlm', 'embedding'].includes(type));
+  const needsModel = types.some(type => ['detector', 'pose', 'skeleton_action', 'video_action', 'relation', 'vlm', 'embedding', 'hand_landmarks', 'prompt_mask'].includes(type));
   return { opencv, needsModel, label: opencv ? needsModel ? 'OpenCV ＋ 模型' : 'OpenCV · 無需模型權重' : '模型與規則' };
 }

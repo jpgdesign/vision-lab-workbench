@@ -31,7 +31,8 @@ def test_default_plan_neither_downloads_nor_creates_folders(tmp_path,monkeypatch
 
 def test_pinned_manifest_has_official_fixed_urls_and_verified_hashes():
     manifest=downloads.load_manifest()
-    assert {x["id"] for x in manifest["models"]}=={"yolo26n_pose","stgcnpp_ntu120","relateanything_convnext_large"}
+    assert {x["id"] for x in manifest["models"]}=={"yolo26n_pose","stgcnpp_ntu120","relateanything_convnext_large",
+                                                      "mediapipe_hand_landmarker","sam2_1_tiny"}
     relation=next(x for x in manifest["models"] if x["alias"]=="relation")
     assert len(relation["files"])==7
     assert all(relation["revision"] in f["url"] for f in relation["files"])

@@ -211,12 +211,16 @@ def register_workflow_routes(application, manager, media, load_models, normalize
                     resolved[ident] = {"model_id": model_id, "params": clean, **weights}
                 except (OSError, ValueError, TypeError, KeyError):
                     errors.append(f"{ident} 權重無法解析或推論參數無效，請檢查所選 checkpoint 與模型參數。")
-            elif kind in {"pose", "skeleton_action", "relation"}:
-                asset_id = {"pose": "yolo26n_pose", "skeleton_action": "stgcnpp_ntu120", "relation": "relateanything_convnext_large"}[kind]
+            elif kind in {"pose", "skeleton_action", "relation", "hand_landmarks", "prompt_mask"}:
+                asset_id = {"pose": "yolo26n_pose", "skeleton_action": "stgcnpp_ntu120", "relation": "relateanything_convnext_large",
+                            "hand_landmarks": "mediapipe_hand_landmarker", "prompt_mask": "sam2_1_tiny"}[kind]
                 public_node["model_id"] = asset_id
                 path = workflow_graph.asset_path(asset_id, manager.app_root)
                 required = [path]
-                dependencies = ["torch", "ultralytics"] if kind == "pose" else ["torch"] if kind == "skeleton_action" else ["onnxruntime"]
+                dependencies = {"pose": ["torch", "ultralytics"], "skeleton_action": ["torch"], "relation": ["onnxruntime"],
+                                "hand_landmarks": ["mediapipe"], "prompt_mask": ["torch", "ultralytics", "pycocotools"]}[kind]
+                if kind == "hand_landmarks":
+                    public_node["device"] = "cpu"
                 if kind == "relation":
                     from .workflow_relations import REQUIRED_FILES
                     required = [path.parent / name for name in REQUIRED_FILES]
@@ -258,7 +262,7 @@ def register_workflow_routes(application, manager, media, load_models, normalize
                     params["model_id"] = chosen
                     public_node["model_id"] = chosen
                     resolved[ident] = {"model_id": chosen}
-            if item and item["kind"] == "image" and kind in {"video_action", "skeleton_action"}:
+            if item and item["kind"] == "image" and kind in {"video_action", "skeleton_action", "office_monitor", "handwash"}:
                 warnings.append(f"{ident} 單張圖片沒有足夠時間序列，動作節點會保持未知；請使用影片或即時串流。")
         checked["valid"] = not errors
         checked["plan"].update(nodes=node_plan, mode="live" if live else "media", media_id=media_id,

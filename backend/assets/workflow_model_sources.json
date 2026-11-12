@@ -34,6 +34,44 @@
       ]
     },
     {
+      "id": "mediapipe_hand_landmarker",
+      "alias": "hand",
+      "name": "MediaPipe Hand Landmarker Full (21 landmarks per hand)",
+      "code_license": "Apache-2.0",
+      "weight_license": "Apache-2.0",
+      "weight_license_url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Hand%20Tracking%20(Lite_Full)%20with%20Fairness%20Oct%202021.pdf",
+      "source": "https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker",
+      "revision": "float16/1",
+      "files": [
+        {
+          "name": "hand_landmarker.task",
+          "url": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          "bytes": 7819105,
+          "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+        }
+      ]
+    },
+    {
+      "id": "sam2_1_tiny",
+      "alias": "mask",
+      "name": "SAM 2.1 Hiera Tiny",
+      "code_license": "Apache-2.0 (Meta); AGPL-3.0 (Ultralytics runtime)",
+      "weight_license": "Apache-2.0",
+      "weight_license_url": "https://github.com/facebookresearch/sam2/blob/main/LICENSE",
+      "source": "https://github.com/facebookresearch/sam2",
+      "repository": "facebook/sam2.1-hiera-tiny",
+      "revision": "de431c4043854a71d8101e17995dfe596bf101a5",
+      "note": "Original Meta weights, renamed from sam2.1_hiera_tiny.pt to the filename required by the Ultralytics SAM architecture selector; no tensor conversion.",
+      "files": [
+        {
+          "name": "sam2.1_t.pt",
+          "url": "https://huggingface.co/facebook/sam2.1-hiera-tiny/resolve/de431c4043854a71d8101e17995dfe596bf101a5/sam2.1_hiera_tiny.pt",
+          "bytes": 156008466,
+          "sha256": "7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69"
+        }
+      ]
+    },
+    {
       "id": "relateanything_convnext_large",
       "alias": "relation",
       "name": "RelateAnything ConvNeXt-Large ONNX",
