@@ -59,6 +59,27 @@ def test_registration_matches_all_catalogue_types():
     assert nodes.NODE_CLASS_MAPPINGS["VisionWB_output"].RETURN_TYPES == ("IMAGE", "STRING")
 
 
+@pytest.mark.parametrize("mode", [None, "iou", "recent_iou"])
+def test_legacy_tracker_prompt_may_omit_appended_association_mode(mode, monkeypatch):
+    resources = {"models": [], "checkpoints": [], "media": [], "integration": {}}
+    monkeypatch.setattr(client, "resources", lambda: resources)
+    tracker = nodes.NODE_CLASS_MAPPINGS["VisionWB_tracker"]
+    fields = tracker.INPUT_TYPES()
+    assert "association_mode" not in fields["required"]
+    assert fields["optional"]["association_mode"] == (["iou", "recent_iou"], {"default": "iou"})
+    source = graph.source_value("1", source_mode="camera")
+    pose = graph.build_values(CATALOG["pose"], "2", {"frame": source})[0]
+    values = {"observations": pose, "labels": '["person"]', "max_age_seconds": 1., "min_iou": .15}
+    if mode is not None:
+        values["association_mode"] = mode
+    assert not (fields["required"].keys() - values.keys())
+    result = tracker().build(unique_id="3", **values)[0]
+    assert result.nodes["comfy_3"]["params"]["association_mode"] == (mode or "iou")
+    output = graph.build_values(CATALOG["output"], "4", {"frame": source, "observations": result})[0]
+    checked = validate_graph(graph.as_graph(output))
+    assert checked["valid"], checked["errors"]
+
+
 def test_model_image_size_and_counts_remain_integers_in_native_widgets():
     resources = {"models": [], "checkpoints": [], "media": [], "integration": {}}
     detector = schema.input_types(CATALOG["detector"], resources)["required"]

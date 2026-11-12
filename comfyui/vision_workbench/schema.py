@@ -81,5 +81,9 @@ def input_types(spec, resources):
         else:
             field = ("STRING", {"default": json.dumps(default, ensure_ascii=False) if kind == "json" else default,
                                  "multiline": kind == "json" or key in {"instruction", "prompt"}})
-        required[key] = field
+        # Older saved/API prompts predate this appended tracker widget. Comfy
+        # validates required fields before build_values can supply defaults.
+        # Keep the widget optional so those prompts retain the legacy IoU mode.
+        target = optional if (spec["type"], key) == ("tracker", "association_mode") else required
+        target[key] = field
     return {"required": required, "optional": optional, "hidden": {"unique_id": "UNIQUE_ID"}}

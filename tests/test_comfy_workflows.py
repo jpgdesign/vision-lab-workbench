@@ -165,7 +165,8 @@ def test_converter_matches_real_plugin_socket_types_and_widget_order():
         if kind != "output":
             assert [p["type"] for p in output_slots(kind)] == [schema.TYPE_MAP[p["type"]] for p in definition["outputs"]]
         fields = schema.input_types(definition, resources)
-        widgets = [key for key, value in fields["required"].items() if not value[1].get("forceInput")]
+        widgets = [key for group in ("required", "optional") for key, value in fields.get(group, {}).items()
+                   if not value[1].get("forceInput")]
         assert widgets == (list(SOURCE_WIDGETS) if kind == "source" else [p["key"] for p in definition["params"]])
 
 
