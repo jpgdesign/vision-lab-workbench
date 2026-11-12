@@ -62,7 +62,7 @@ SAMPLES = {
 # Each recommendation states what can actually be inspected. No unrelated
 # available image is silently substituted for a temporal or safety sample.
 TEMPLATE_SAMPLES = {
-    "live-office-crossing": ([], "使用你的辦公室攝影機；左到右出去、右到左進來。坐姿需看得到腿部，這個桌面視角可能遮擋；中央線可拖拉。"),
+    "live-office-crossing": ([], "使用你的辦公室攝影機；左到右出去、右到左進來。遮擋輔助可使用局部骨架；只剩上半身時請校正坐姿肩膀中點區域。中央線可拖拉。"),
     "handwashing-hybrid": (["handwashing_user_clip"], "比較實際手部關節、SAM 遮罩、RGB washing hands 分數與人體骨架可見性；缺證據時保留未知，沒有完整流程真值。"),
     "handwashing-detection-mask": (["handwashing_user_clip"], "比較文字提示物件框與實際遮罩；手重疊可能只找到一個區域，單張影像不代表動作完成。"),
     "live-multi-model": (["ntu", "zoneguard"], "同一畫面疊上 YOLO26、YOLOv12 與人體關節；可切換 USB／虛擬攝影機或 VDO.Ninja，並替換個別偵測節點的微調權重。"),
@@ -131,7 +131,7 @@ def with_samples(document, entries):
                           source_url="https://github.com/nusRying/ai-safety-monitoring#quick-start",
                           notes="參考專案未提交原始 PPE／跌倒影片；不會用作品集截圖或無關素材冒充輸入範例。")
             if template["id"] == "live-office-crossing":
-                sample.update(source_url="", notes="使用自己的辦公室鏡頭；左右方向以送入模型的畫面為準。桌面遮擋腿部時，坐姿可能無法判定。")
+                sample.update(source_url="", notes="使用自己的辦公室鏡頭；左右方向以送入模型的畫面為準。桌面遮擋髖膝時，請框選坐姿肩膀中點區域；遮擋結果是候選，連肩膀也看不到時仍無法判定。")
         elif entry is None:
             sample["notes"] += " 此素材尚未匯入本機；可從來源頁取得後上傳，或選用自己的相符素材。"
         template["sample"] = sample

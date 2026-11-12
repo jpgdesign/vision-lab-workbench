@@ -2022,7 +2022,7 @@
     "type": "office_monitor",
     "label": "辦公室 · 進出計數與坐姿規則",
     "category": "規則",
-    "description": "中央線左→右為出去、右→左為進來；坐姿顯示使用者定義的『認真（坐姿規則）』。此為可見姿態規則，不推斷專注或工作表現；腿部遮擋時回報不明。",
+    "description": "中央線左→右為出去、右→左為進來。可選完整骨架或遮擋輔助，並校正坐姿肩膀區域；『認真』只是自訂坐姿標籤，不推斷專注或工作表現。",
     "inputs": [
       {
         "name": "tracks",
@@ -2171,6 +2171,55 @@
         "min": 1,
         "max": 512,
         "step": 1
+      },
+      {
+        "key": "posture_mode",
+        "label": "坐姿判斷（strict 完整／occlusion 遮擋輔助）",
+        "default": "strict_full_body",
+        "type": "select",
+        "options": [
+          "strict_full_body",
+          "occlusion_assisted"
+        ]
+      },
+      {
+        "key": "zones",
+        "label": "坐姿肩膀中點區域（需校正）",
+        "default": [],
+        "type": "json"
+      },
+      {
+        "key": "occluded_dwell_seconds",
+        "label": "遮擋候選穩定確認（秒）",
+        "default": 2.0,
+        "type": "number",
+        "min": 0,
+        "max": 60,
+        "step": 0.1
+      },
+      {
+        "key": "require_sit_transition",
+        "label": "上半身候選須先觀察站→坐",
+        "default": false,
+        "type": "boolean"
+      },
+      {
+        "key": "sit_drop_ratio",
+        "label": "站→坐肩膀最小下降（畫面高比例）",
+        "default": 0.06,
+        "type": "number",
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.01
+      },
+      {
+        "key": "max_pose_drift",
+        "label": "候選最大肩膀漂移（畫面對角線比例）",
+        "default": 0.06,
+        "type": "number",
+        "min": 0.001,
+        "max": 0.5,
+        "step": 0.01
       }
     ]
   },

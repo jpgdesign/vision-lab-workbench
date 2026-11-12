@@ -16,12 +16,14 @@ DEFAULTS = {
     "max_gap_seconds": 1., "cooldown_seconds": 1.5, "track_ttl_seconds": 5.,
     "min_score": .25, "keypoint_confidence": .5, "sitting_dwell_seconds": 1.,
     "seated_label": "認真（坐姿規則）", "max_tracks": MAX_TRACKS,
+    "posture_mode": "strict_full_body", "zones": [], "occluded_dwell_seconds": 2.,
+    "require_sit_transition": False, "sit_drop_ratio": .06, "max_pose_drift": .06,
 }
 
 
 def office_catalog(node, param, port):
     return [node("office_monitor", "辦公室 · 進出計數與坐姿規則", "規則",
-                 "中央線左→右為出去、右→左為進來；坐姿顯示使用者定義的『認真（坐姿規則）』。此為可見姿態規則，不推斷專注或工作表現；腿部遮擋時回報不明。",
+                 "中央線左→右為出去、右→左為進來。可選完整骨架或遮擋輔助，並校正坐姿肩膀區域；『認真』只是自訂坐姿標籤，不推斷專注或工作表現。",
                  [port("tracks", "tracks")], [port("actions", "actions"), port("events", "events")], [
                      param("line_x", "中線水平位置（0 左／1 右）", .5, min=.002, max=.998, step=.005),
                      param("line_y_start", "線段上端（相對高度）", 0., min=0, max=1, step=.01),
@@ -37,6 +39,12 @@ def office_catalog(node, param, port):
                      param("sitting_dwell_seconds", "坐姿持續確認（秒）", 1., min=0, max=60, step=.1),
                      param("seated_label", "坐姿規則顯示名稱", "認真（坐姿規則）"),
                      param("max_tracks", "最多保留追蹤數", MAX_TRACKS, min=1, max=MAX_TRACKS, step=1),
+                     param("posture_mode", "坐姿判斷（strict 完整／occlusion 遮擋輔助）", "strict_full_body", "select", options=["strict_full_body", "occlusion_assisted"]),
+                     param("zones", "坐姿肩膀中點區域（需校正）", []),
+                     param("occluded_dwell_seconds", "遮擋候選穩定確認（秒）", 2., min=0, max=60, step=.1),
+                     param("require_sit_transition", "上半身候選須先觀察站→坐", False),
+                     param("sit_drop_ratio", "站→坐肩膀最小下降（畫面高比例）", .06, min=.001, max=.5, step=.01),
+                     param("max_pose_drift", "候選最大肩膀漂移（畫面對角線比例）", .06, min=.001, max=.5, step=.01),
                  ])]
 
 
@@ -75,6 +83,35 @@ def validate_office_params(params):
     # A custom display label must retain its observable rule qualifier.
     if "坐姿規則" not in result["seated_label"]:
         result["seated_label"] = result["seated_label"].strip() + "（坐姿規則）"
+    if result["posture_mode"] not in ("strict_full_body", "occlusion_assisted"):
+        raise ValueError("posture_mode must be strict_full_body or occlusion_assisted")
+    if not isinstance(result["require_sit_transition"], bool):
+        raise ValueError("require_sit_transition must be a boolean")
+    result["occluded_dwell_seconds"] = _number(result["occluded_dwell_seconds"], "occluded_dwell_seconds", 0, 60)
+    for name in ("sit_drop_ratio", "max_pose_drift"):
+        result[name] = _number(result[name], name, .001, .5)
+    zones = result["zones"]
+    if not isinstance(zones, list) or len(zones) > 8:
+        raise ValueError("zones must contain at most 8 seated-shoulder polygons")
+    checked = []
+    for zone in zones:
+        if not isinstance(zone, dict) or not isinstance(zone.get("name"), str) or not 1 <= len(zone["name"].strip()) <= 100:
+            raise ValueError("Each seated-shoulder zone needs a 1–100 character name")
+        points = zone.get("points")
+        if not isinstance(points, list) or not 3 <= len(points) <= 64:
+            raise ValueError("Each seated-shoulder polygon needs 3–64 points")
+        polygon = []
+        for point in points:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                raise ValueError("Zone points must be normalized x,y pairs")
+            polygon.append([_number(point[0], "zone x", 0, 1), _number(point[1], "zone y", 0, 1)])
+        area = abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(polygon, polygon[1:] + polygon[:1])))
+        if area < 1e-6:
+            raise ValueError("Seated-shoulder polygon must have nonzero area")
+        if zone["name"] in {z["name"] for z in checked}:
+            raise ValueError("Seated-shoulder zone names must be unique")
+        checked.append({"name": zone["name"], "points": polygon})
+    result["zones"] = checked
     return result
 
 
@@ -160,6 +197,60 @@ def seated_pose_evidence(item, width, height, threshold=.5):
     return ("seated_candidate", score, details) if seated else ("unknown", 0., {**details, "reason": "no_reliable_standing_or_seated_rule"})
 
 
+def partial_seated_pose_evidence(item, width, height, threshold=.5):
+    """Use only visible COCO17 body sides; missing ankles never become invented joints."""
+    points = {i: _point(item, i, threshold, width, height) for i in (5, 6, 11, 12, 13, 14, 15, 16)}
+    details = {"method": "partial_skeleton", "skeleton_schema": "coco17", "sides": [],
+               "limitations": "Occluded 2D posture candidate, not proof of sitting or attention"}
+    signals, used = [], []
+    for s, h, k, a in ((5, 11, 13, 15), (6, 12, 14, 16)):
+        shoulder, hip, knee, ankle = (points[i] for i in (s, h, k, a))
+        if shoulder and hip:
+            torso = math.dist(shoulder[:2], hip[:2])
+            tilt = math.degrees(math.atan2(abs(hip[0] - shoulder[0]), hip[1] - shoulder[1]))
+            if torso < 5 or hip[1] <= shoulder[1] or tilt > 35:
+                return "unknown", 0., {**details, "reason": "visible_torso_not_upright", "blocks_roi": True}
+        if not (shoulder and hip and knee):
+            continue
+        hip_angle = _angle(shoulder, hip, knee)
+        knee_angle = _angle(hip, knee, ankle) if ankle else None
+        details["sides"].append({"shoulder_index": s, "hip_angle_degrees": hip_angle, "knee_angle_degrees": knee_angle})
+        used.extend([shoulder, hip, knee] + ([ankle] if ankle else []))
+        if hip_angle is None or math.dist(hip[:2], knee[:2]) < .1 * torso:
+            return "unknown", 0., {**details, "reason": "degenerate_visible_thigh", "blocks_roi": True}
+        if (hip_angle >= 155 and knee[1] > hip[1]
+                and (ankle is None or (knee_angle is not None and knee_angle >= 155 and ankle[1] > knee[1]))):
+            signals.append("standing")
+        elif (45 <= hip_angle <= 135 and -.25 * torso <= knee[1] - hip[1] <= .75 * torso
+              and (ankle is None or (knee_angle is not None and 50 <= knee_angle <= 135 and ankle[1] - knee[1] >= .2 * torso))):
+            signals.append("seated_candidate")
+        else:
+            return "unknown", 0., {**details, "reason": "visible_leg_not_seated", "blocks_roi": True}
+    if signals and len(set(signals)) == 1:
+        return signals[0], min(p[2] for p in used), details
+    return "unknown", 0., {**details, "reason": "conflicting_visible_sides" if signals else "insufficient_partial_joints", "blocks_roi": bool(signals)}
+
+
+def _shoulder_reference(item, width, height, threshold):
+    shoulders = [_point(item, i, threshold, width, height) for i in (5, 6)]
+    if not all(shoulders):
+        return None
+    center = [(shoulders[0][i] + shoulders[1][i]) / 2 for i in (0, 1)]
+    span = math.dist(shoulders[0][:2], shoulders[1][:2])
+    if span < 5:
+        return None
+    return {"center": center, "span": span, "score": min(p[2] for p in shoulders)}
+
+
+def _inside_polygon(point, points):
+    x, y = point
+    inside = False
+    for a, b in zip(points, points[1:] + points[:1]):
+        if (a[1] > y) != (b[1] > y) and x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]:
+            inside = not inside
+    return inside
+
+
 class OfficeNode:
     """Count confirmed crossings and report a temporally supported pose rule."""
 
@@ -185,7 +276,42 @@ class OfficeNode:
         return {"last_seen": t, "side": None, "anchor": None, "previous": None,
                 "candidate": None, "candidate_since": t, "candidate_samples": 0,
                 "intersected_line": False, "last_cross": -math.inf,
-                "seated_since": None, "seated_samples": 0, "seated_confirmed": False}
+                "seated_since": None, "seated_samples": 0, "seated_confirmed": False,
+                "occluded_since": None, "occluded_samples": 0, "occluded_confirmed": False,
+                "pose_anchor": None, "pose_method": None, "standing_reference": None, "sit_transition": False}
+
+    @staticmethod
+    def _clear_occlusion(state, baseline=False):
+        state.update(occluded_since=None, occluded_samples=0, occluded_confirmed=False,
+                     pose_anchor=None, pose_method=None)
+        if baseline:
+            state.update(standing_reference=None, sit_transition=False)
+
+    def _upper_body_evidence(self, item, state, frame, t, reference):
+        p, width, height = self.params, frame["width"], frame["height"]
+        details = {"method": "upper_body_seat_roi", "limitations": "Calibrated shoulder position is only an occluded seated candidate"}
+        if not reference:
+            return "unknown", 0., {**details, "reason": "two_visible_shoulders_required"}
+        heads = [_point(item, i, p["keypoint_confidence"], width, height) for i in range(5)]
+        heads = [h for h in heads if h and h[1] < reference["center"][1] - 2]
+        if not heads:
+            return "unknown", 0., {**details, "reason": "visible_head_above_shoulders_required"}
+        center = reference["center"]
+        zone = next((z for z in p["zones"] if _inside_polygon([center[0] / width, center[1] / height], z["points"])), None)
+        if zone is None:
+            state["sit_transition"] = False
+            return "unknown", 0., {**details, "reason": "shoulder_midpoint_outside_calibrated_seat_zones"}
+        baseline = state["standing_reference"]
+        if baseline and not state["sit_transition"]:
+            delta_y = (center[1] - baseline["center"][1]) / height
+            scale = reference["span"] / baseline["span"]
+            if (0 < t - baseline["timestamp"] <= 10 and delta_y >= p["sit_drop_ratio"]
+                    and .7 <= scale <= 1.3 and abs(center[0] - baseline["center"][0]) / width <= .1):
+                state["sit_transition"] = True
+        if p["require_sit_transition"] and not state["sit_transition"]:
+            return "unknown", 0., {**details, "reason": "same_track_standing_to_sitting_transition_required", "zone": zone["name"]}
+        return "seated_candidate", min(reference["score"], max(h[2] for h in heads)), {
+            **details, "zone": zone["name"], "sit_transition_observed": state["sit_transition"]}
 
     def _event(self, kind, label, item, t, **details):
         self._event_sequence += 1
@@ -238,7 +364,48 @@ class OfficeNode:
 
     def _posture(self, item, state, frame, t):
         label, score, details = seated_pose_evidence(item, frame["width"], frame["height"], self.params["keypoint_confidence"])
-        event = None
+        event, assisted = None, False
+        reference = _shoulder_reference(item, frame["width"], frame["height"], self.params["keypoint_confidence"])
+        if (self.params["posture_mode"] == "occlusion_assisted" and label == "unknown"
+                and details.get("reason") == "both_shoulders_hips_knees_ankles_must_be_visible"):
+            label, score, details = partial_seated_pose_evidence(item, frame["width"], frame["height"], self.params["keypoint_confidence"])
+            if label == "unknown" and not details.get("blocks_roi"):
+                label, score, details = self._upper_body_evidence(item, state, frame, t, reference)
+            assisted = label == "seated_candidate"
+        if label == "standing":
+            self._clear_occlusion(state, baseline=True)
+            if reference:
+                state["standing_reference"] = {**reference, "timestamp": t}
+        if assisted:
+            # Stable position is evidence only for the same observed track and
+            # the same method/seat; it never upgrades to the full-body rule.
+            anchor = reference["center"] if reference else next(
+                (p[:2] for i in (5, 6) if (p := _point(item, i, self.params["keypoint_confidence"], frame["width"], frame["height"]))), None)
+            method_key = (details["method"], details.get("zone"))
+            drift = (math.dist(anchor, state["pose_anchor"]) / math.hypot(frame["width"], frame["height"])) if anchor and state["pose_anchor"] else 0.
+            if state["pose_method"] != method_key or drift > self.params["max_pose_drift"]:
+                self._clear_occlusion(state)
+            if state["occluded_since"] is None:
+                state.update(occluded_since=t, pose_anchor=anchor, pose_method=method_key)
+            state["occluded_samples"] += 1
+            elapsed = t - state["occluded_since"]
+            label = "occlusion_warming"
+            if state["occluded_samples"] >= 2 and elapsed + 1e-9 >= self.params["occluded_dwell_seconds"]:
+                label = "seated_occlusion_candidate"
+                if not state["occluded_confirmed"]:
+                    event = self._event(label, self.params["seated_label"] + " · 遮擋候選", item, t,
+                                        method=details["method"], observed_seconds=elapsed, user_assigned_label=True,
+                                        infers_attention=False, candidate_only=True, zone=details.get("zone"))
+                state["occluded_confirmed"] = True
+        else:
+            self._clear_occlusion(state)
+            # A visible descent can pass outside the calibrated seated area.
+            # Keep the recent standing reference through that transit; missing
+            # joints/invalid posture still break it, and matching expires at 10s.
+            if label == "unknown" and details.get("reason") not in {
+                    "same_track_standing_to_sitting_transition_required",
+                    "shoulder_midpoint_outside_calibrated_seat_zones"}:
+                state.update(standing_reference=None, sit_transition=False)
         if label == "seated_candidate":
             if state["seated_since"] is None:
                 state.update(seated_since=t, seated_samples=0)
@@ -253,14 +420,16 @@ class OfficeNode:
         else:
             state.update(seated_since=None, seated_samples=0, seated_confirmed=False)
         display = {"seated_rule": self.params["seated_label"], "seated_candidate": "坐姿候選（等待持續確認）",
+                   "occlusion_warming": "遮擋坐姿候選（等待穩定確認）",
+                   "seated_occlusion_candidate": self.params["seated_label"] + " · 遮擋候選",
                    "standing": "站姿（姿態規則）", "unknown": "姿態不明（遮擋或證據不足）"}[label]
         action = {**_actor(item), "label": display, "signal": label,
                   "kind": "unknown" if label == "unknown" else "posture_rule",
                   "score": score, "timestamp": t, "observed": True,
-                  "method": "coco17_geometry_rule", "infers_attention": False,
+                  "method": details.get("method", "coco17_geometry_rule"), "infers_attention": False,
                   "score_semantics": "minimum_keypoint_confidence_not_action_probability",
                   "details": {**details, "user_assigned_label": self.params["seated_label"],
-                              "observed_seconds": 0. if state["seated_since"] is None else t - state["seated_since"]}}
+                              "observed_seconds": t - state["occluded_since"] if assisted else (0. if state["seated_since"] is None else t - state["seated_since"])}}
         return action, event
 
     def _result(self, actions, events, frame, fresh=True):
@@ -272,7 +441,11 @@ class OfficeNode:
                   "diagnostics": {"active_tracks": len(self._states), "infers_attention": False,
                                   "direction_coordinate_space": "processed_image_before_any_display_mirroring",
                                   "limitation": "Track ID changes or occluded legs may prevent a count/posture decision"}}
-        return {"actions": {**common, "items": actions}, "events": {**common, "items": events, "overlays": [overlay]}}
+        overlays = [overlay]
+        if self.params["posture_mode"] == "occlusion_assisted":
+            overlays.extend({"kind": "polygon", "points": z["points"], "label": "坐姿肩膀區: " + z["name"]}
+                            for z in self.params["zones"])
+        return {"actions": {**common, "items": actions}, "events": {**common, "items": events, "overlays": overlays}}
 
     def process(self, inputs, frame):
         t = _number(frame.get("timestamp"), "timestamp", 0., 1e15)
@@ -292,6 +465,9 @@ class OfficeNode:
         if not isinstance(packet, dict) or not isinstance(packet.get("items", []), list):
             raise ValueError("tracks must be a packet with an items list")
         if duplicate or packet.get("fresh", True) is False or packet.get("timestamp", t) != t:
+            if not duplicate:
+                for state in self._states.values():
+                    self._clear_occlusion(state, baseline=True)
             return self._result([], [], frame, fresh=False)
         actions, events, seen = [], [], set()
         for item in packet.get("items", []):
@@ -323,6 +499,7 @@ class OfficeNode:
         for key, state in self._states.items():
             if key not in seen:
                 state.update(candidate=None, candidate_samples=0, seated_since=None, seated_samples=0, seated_confirmed=False)
+                self._clear_occlusion(state, baseline=True)
         if len(self._states) > self.params["max_tracks"]:
             oldest = sorted(self._states, key=lambda k: (self._states[k]["last_seen"], k))
             for key in oldest[:len(self._states) - self.params["max_tracks"]]:

@@ -55,6 +55,7 @@ export default function WorkflowLineEditor({ media, params = {}, onChange, disab
     </div>
     <label className="field wf-line-range"><span>水平位置 · 距左側 {(draft * 100).toFixed(1)}%</span><input type="range" aria-label="中線水平位置" min={margin} max={1 - margin} step="0.001" value={draft} disabled={disabled} onChange={event => update(Number(event.target.value), true)}/></label>
     <p className="wf-hint">陰影帶內的抖動不計次；跨線後需在另一側穩定出現。可用方向鍵微調，Shift 加方向鍵每次移動 5%。</p>
-    <p className="wf-hint">「認真」是你設定的坐姿名稱；需要可見的肩、髖、膝、腳踝。桌子遮擋雙腿時顯示姿態不明。</p>
+    <p className="wf-hint">「認真」是坐姿規則的自訂名稱。雙腿被桌子遮擋時可選「遮擋輔助」模式，使用可見骨架與持續位置；證據不足仍顯示姿態不明。</p>
+    <p className="wf-hint">肩部位置校正：① 選遮擋輔助模式。② 選同一鏡位的坐姿參考圖，在下方新增區域，圈出坐下時「雙肩中點」可落入的範圍並儲存。③ 回到即時影像測試；遮擋結果標示「遮擋候選」。區域不是整張椅子的外框，鏡位或鏡像改變後需重畫。</p>
   </section>;
 }

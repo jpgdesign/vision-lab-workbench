@@ -120,9 +120,9 @@ def templates():
                 ("histogram","actions","rule","actions"),("histogram","actions","out","actions"),("rule","events","out","events")], [SAFETY, OPENCV]),
     ])
     values.extend([
-        build("live-office-crossing", "辦公室攝影機：進來／出去＋坐姿", "中央線左→右＝出去、右→左＝進來。『認真』是自訂的坐姿規則；桌子遮擋腿部時會顯示姿態不明。可在節點設定拖拉中央線。", [
+        build("live-office-crossing", "辦公室攝影機：進來／出去＋坐姿", "中央線左→右＝出去、右→左＝進來。已開啟遮擋輔助：可見肩髖膝時使用局部骨架，只剩上半身時需框選坐姿肩膀區域。『認真』是自訂坐姿標籤，遮擋結果保留候選標示。", [
             ("input","source",30,120,{}),("pose","pose",350,120,{}),
-            ("track","tracker",670,120,{}),("office","office_monitor",990,120,{}),("out","output",1330,120,{})], [
+            ("track","tracker",670,120,{}),("office","office_monitor",990,120,{"posture_mode":"occlusion_assisted"}),("out","output",1330,120,{})], [
                 ("input","frame","pose","frame"),("pose","poses","track","observations"),
                 ("track","tracks","office","tracks"),("input","frame","out","frame"),
                 ("track","tracks","out","observations"),("office","actions","out","actions"),
