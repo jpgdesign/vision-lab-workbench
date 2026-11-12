@@ -39,7 +39,8 @@ NODE_TYPES = [
         param("max_gap_seconds", "觀察最大間隔（秒）", 5., min=.1, max=120, step=.1)]),
     node("tracker", "物件追蹤", "處理", "以 IoU 與位置配對維持工作內的追蹤 ID；遮擋後重新出現可能取得新 ID。", [port("observations", "observations", accepts=["detections", "poses"])], [port("tracks", "tracks")], [
         param("labels", "追蹤類別（空陣列＝全部）", ["person"]), param("max_age_seconds", "追蹤失聯上限（秒）", 1., min=.1, max=10, step=.1),
-        param("min_iou", "配對 IoU 下限", .15, min=.01, max=.95, step=.01)]),
+        param("min_iou", "配對 IoU 下限", .15, min=.01, max=.95, step=.01),
+        param("association_mode", "配對方式（recent 優先最近觀察）", "iou", "select", options=["iou", "recent_iou"])]),
     node("zone", "區域／停留規則", "規則", "可畫多個區域，輸出進出、停留及人數事件；失聯不當作已離開。", [port("tracks", "tracks")], [port("tracks", "tracks"), port("events", "events")], [
         param("zones", "區域（名稱與相對座標）", [{"name": "restricted", "points": [[.35,.2],[.8,.2],[.8,.95],[.35,.95]]}]),
         param("anchor", "判定位置", "foot", "select", options=["foot", "center"]), param("dwell_seconds", "停留事件門檻（秒）", 3., min=0, max=3600, step=.1),

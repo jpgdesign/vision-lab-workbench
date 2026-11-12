@@ -181,20 +181,25 @@ class ModelNode:
 
     def _pose(self, image):
         import numpy as np
+        from .workflow_pose_filter import filter_pose_duplicates
         self._load()
         result = self.model.predict(image, device=self.actual_device, verbose=False,
                                     conf=self.params.get("conf", .35), imgsz=self.params.get("imgsz", 640),
                                     max_det=MAX_SKELETON_TRACKS)[0]
         if result.boxes is None or len(result.boxes) == 0:
+            self.diagnostics.update(filter_pose_duplicates([])[1])
             return []
         if result.keypoints is None:
             raise RuntimeError("Pose checkpoint returned boxes without keypoints")
         points = result.keypoints.data.detach().cpu().numpy()
         if points.shape != (len(result.boxes), 17, 3) or not np.isfinite(points).all():
             raise RuntimeError("Pose checkpoint returned invalid COCO17 keypoints")
-        return [{"label": "person", "score": float(score), "box": box.tolist(), "keypoints": joints.tolist(),
+        items = [{"label": "person", "score": float(score), "box": box.tolist(), "keypoints": joints.tolist(),
                  "keypoint_format": "coco17_xy_confidence_pixels", "observed": True}
                 for box, score, joints in zip(result.boxes.xyxy.detach().cpu(), result.boxes.conf.detach().cpu(), points)]
+        items, diagnostics = filter_pose_duplicates(items)
+        self.diagnostics.update(diagnostics)
+        return items
 
     def _tracks(self, inputs, frame, limit):
         tracks = [item for item in _items(inputs, "tracks", frame["timestamp"])

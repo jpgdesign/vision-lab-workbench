@@ -279,6 +279,16 @@
         "min": 0.01,
         "max": 0.95,
         "step": 0.01
+      },
+      {
+        "key": "association_mode",
+        "label": "配對方式（recent 優先最近觀察）",
+        "default": "iou",
+        "type": "select",
+        "options": [
+          "iou",
+          "recent_iou"
+        ]
       }
     ]
   },

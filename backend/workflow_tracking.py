@@ -77,18 +77,38 @@ class TrackerNode:
         self.labels = set(labels)
         self.min_iou = _parameter(params.get("min_iou", .15), "min_iou", 0, 1)
         self.max_age_seconds = _parameter(params.get("max_age_seconds", 1), "max_age_seconds", 0, 3600)
+        self.association_mode = params.get("association_mode", "iou")
+        if self.association_mode not in ("iou", "recent_iou"):
+            raise ValueError("association_mode must be iou or recent_iou")
         self.node_id = str(node_id)
         self._assignment = _solver()
         self.method = "hungarian_iou_same_class" if self._assignment else "greedy_iou_same_class"
+        if self.association_mode == "recent_iou":
+            self.method += "_recent_first"
         self.reset()
 
     def reset(self):
         self._generation = getattr(self, "_generation", 0) + 1
         self._tracks, self._next_id = {}, 1
         self._source, self._last_time = None, None
+        self._last_observed_ids, self._last_fresh_time = set(), None
 
     def _matches(self, observations):
         ids = sorted(self._tracks)
+        if self.association_mode == "recent_iou":
+            # First keep continuity with tracks observed in the previous fresh
+            # frame. Only remaining detections may revive a temporarily lost
+            # track; a stale, slightly better box cannot steal an active match.
+            active = [track_id for track_id in ids if track_id in self._last_observed_ids]
+            matches = self._assign(active, observations)
+            remaining = [index for index in range(len(observations)) if index not in matches]
+            lost = [track_id for track_id in ids if track_id not in self._last_observed_ids]
+            recovered = self._assign(lost, [observations[index] for index in remaining])
+            matches.update({remaining[index]: track_id for index, track_id in recovered.items()})
+            return matches
+        return self._assign(ids, observations)
+
+    def _assign(self, ids, observations):
         if not ids or not observations:
             return {}
         candidates = []
@@ -137,6 +157,13 @@ class TrackerNode:
         packet = inputs.get("observations", {})
         if not isinstance(packet, dict) or not isinstance(packet.get("items", []), list):
             raise ValueError("observations must be a packet with an items list")
+        if self.association_mode == "recent_iou" and (
+                packet.get("fresh", True) is False or packet.get("timestamp", t) != t
+                or self._last_fresh_time == t):
+            # A repeated/cached inference packet is not a new observation and
+            # must not keep either identity TTL or posture dwell alive.
+            return {"tracks": {"items": [], "timestamp": t, "frame": dict(frame), "fresh": False,
+                               "tracking": self._diagnostics(reset_reason, len(expired), stale=True)}}
         valid, invalid_count, label_filtered = [], 0, 0
         for index, raw in enumerate(packet.get("items", [])):
             item = _observation(raw)
@@ -170,10 +197,19 @@ class TrackerNode:
             track_key = "/".join(quote(str(x), safe="") for x in (scope[0], scope[1], self.node_id, self._generation, track_id))
             output.append({**item, "track_id": track_id, "track_key": track_key, "observed": True,
                            "age_seconds": t - state["first_seen"]})
-        diagnostics = {"method": self.method, "active_tracks": len(self._tracks), "max_active_tracks": MAX_ACTIVE_TRACKS,
-                       "invalid_observations": invalid_count, "label_filtered": label_filtered,
-                       "capacity_filtered_observations": limited, "capacity_evictions": eviction_count,
-                       "expired_tracks": len(expired), "reset_reason": reset_reason,
+        if self.association_mode == "recent_iou":
+            self._last_observed_ids = {item["track_id"] for item in output}
+            self._last_fresh_time = t
+        diagnostics = self._diagnostics(reset_reason, len(expired), invalid=invalid_count, filtered=label_filtered,
+                                        limited=limited, evictions=eviction_count)
+        return {"tracks": {"items": output, "timestamp": t, "frame": dict(frame), "tracking": diagnostics,
+                           **({"fresh": True} if self.association_mode == "recent_iou" else {})}}
+
+    def _diagnostics(self, reset_reason, expired, *, invalid=0, filtered=0, limited=0, evictions=0, stale=False):
+        return {"method": self.method, "association_mode": self.association_mode,
+                       "active_tracks": len(self._tracks), "max_active_tracks": MAX_ACTIVE_TRACKS,
+                       "invalid_observations": invalid, "label_filtered": filtered,
+                       "capacity_filtered_observations": limited, "capacity_evictions": evictions,
+                       "expired_tracks": expired, "reset_reason": reset_reason, "stale_packet_ignored": stale,
                        "identity_scope": "source/session/node/generation/local_id", "ghost_predictions": False,
                        "limitation": "IoU association has no motion prediction or appearance ReID; crossings/occlusion may switch IDs."}
-        return {"tracks": {"items": output, "timestamp": t, "frame": dict(frame), "tracking": diagnostics}}
