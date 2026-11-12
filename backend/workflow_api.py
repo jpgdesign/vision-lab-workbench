@@ -171,6 +171,8 @@ def register_workflow_routes(application, manager, media, load_models, normalize
                 labels = params.get("labels")
                 if not isinstance(labels, list) or any(not isinstance(v, str) or not v.strip() or len(v) > 256 for v in labels):
                     errors.append(f"{ident} 追蹤類別必須是非空字串清單。")
+            if kind == "office_monitor" and params.get("posture_mode") == "occlusion_assisted" and not params.get("zones"):
+                warnings.append(f"{ident} 已啟用遮擋輔助，但尚未校正坐姿肩部區域。可見肩、髖、膝時仍可使用局部骨架；髖或膝被遮住、只剩上半身時，請先框選坐下時雙肩中點的範圍，否則會顯示待校正而無法判定坐姿。")
             if kind in {"detector", "video_action", "embedding"}:
                 model_id, checkpoint_id = params["model_id"], params.get("checkpoint_id") or None
                 public_node.update(model_id=model_id, checkpoint_id=checkpoint_id)

@@ -297,6 +297,8 @@ class OfficeNode:
         if not heads:
             return "unknown", 0., {**details, "reason": "visible_head_above_shoulders_required"}
         center = reference["center"]
+        if not p["zones"]:
+            return "unknown", 0., {**details, "reason": "seat_zones_not_configured"}
         zone = next((z for z in p["zones"] if _inside_polygon([center[0] / width, center[1] / height], z["points"])), None)
         if zone is None:
             state["sit_transition"] = False
@@ -423,6 +425,8 @@ class OfficeNode:
                    "occlusion_warming": "遮擋坐姿候選（等待穩定確認）",
                    "seated_occlusion_candidate": self.params["seated_label"] + " · 遮擋候選",
                    "standing": "站姿（姿態規則）", "unknown": "姿態不明（遮擋或證據不足）"}[label]
+        if label == "unknown" and details.get("reason") == "seat_zones_not_configured":
+            display = "姿態不明（尚未校正坐姿肩部區域）"
         action = {**_actor(item), "label": display, "signal": label,
                   "kind": "unknown" if label == "unknown" else "posture_rule",
                   "score": score, "timestamp": t, "observed": True,

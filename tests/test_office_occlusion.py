@@ -141,7 +141,10 @@ def test_upper_body_alone_requires_explicit_seat_calibration():
     rule = node()
     item = person(upper_body())
     step(rule, 0., item)
-    assert action(step(rule, .3, item))["signal"] == "unknown"
+    result = action(step(rule, .3, item))
+    assert result["signal"] == "unknown"
+    assert result["details"]["reason"] == "seat_zones_not_configured"
+    assert "尚未校正" in result["label"]
 
 
 def test_calibrated_upper_body_becomes_occlusion_candidate_after_stability():
